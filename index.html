@@ -147,6 +147,7 @@ body.flying #phasePill{display:flex}
 .hud-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .hbtn{padding:9px 14px;border-radius:11px;border:1px solid var(--line2);background:rgba(255,255,255,.04);font-size:12.5px;font-weight:700;display:inline-flex;gap:7px;align-items:center}
 .hbtn:hover,.hbtn.on{border-color:var(--gold);color:var(--gold2)}
+.hbtn.vol{cursor:default}.hbtn.vol input{width:90px;accent-color:#d4af6a}
 .hbtn.danger{color:var(--red);border-color:rgba(239,127,127,.25)}
 #pa{position:fixed;z-index:12;top:84px;right:20px;width:330px;display:none;padding:14px 16px;max-height:44vh;overflow:hidden}
 body.flying #pa{display:block}
@@ -346,7 +347,8 @@ body.flying #pa{display:block}
   <div class="prog-lbl"><span id="pFrom">MAD</span><span id="pTo">JMK</span></div>
   <div class="hud-btns">
     <button class="hbtn" id="bPause">⏸ Pausar</button>
-    <button class="hbtn" id="bNoise">🔈 Ruido de cabina</button>
+    <button class="hbtn" id="bNoise">🔈 Sonido de cabina</button>
+    <label class="hbtn vol" title="Volumen">🎚️ <input type="range" id="vol" min="0" max="1" step="0.05"></label>
     <button class="hbtn" id="bFollow">🎯 Seguir avión</button>
     <button class="hbtn" id="bPass">🎫 Tarjeta</button>
     <button class="hbtn" id="bFull">⛶ Pantalla completa</button>
@@ -862,29 +864,88 @@ async function downloadPass(f){
 }
 
 /* ---- audio ---- */
-let actx=null, noise=null;
-function audio(){ try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }catch(e){} return actx; }
-function chime(){
-  const c=audio(); if(!c) return;
-  [[659.25,0],[523.25,.55]].forEach(([fq,t0]) => {
-    const o=c.createOscillator(), g=c.createGain(); o.type='sine'; o.frequency.value=fq;
-    g.gain.setValueAtTime(0,c.currentTime+t0); g.gain.linearRampToValueAtTime(.22,c.currentTime+t0+.02); g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+t0+1.6);
-    o.connect(g).connect(c.destination); o.start(c.currentTime+t0); o.stop(c.currentTime+t0+1.7);
-  });
+let actx=null, master=null, noise=null, ambTimer=null;
+let vol = LS.get('vp_vol', 0.5);
+function audio(){
+  try{
+    if(!actx){ actx=new (window.AudioContext||window.webkitAudioContext)(); master=actx.createGain(); master.gain.value=vol; master.connect(actx.destination); }
+    if(actx.state==='suspended') actx.resume();
+  }catch(e){}
+  return actx;
+}
+function setVolume(v){ vol=v; LS.set('vp_vol',v); if(master) master.gain.setTargetAtTime(v, actx.currentTime, .15); }
+// tono suave con caída exponencial
+function tone(fq, t0, dur, peak, type='sine'){
+  const c=actx, o=c.createOscillator(), g=c.createGain();
+  o.type=type; o.frequency.value=fq;
+  const t=c.currentTime+t0;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+.015); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t+dur+.05);
+}
+// aviso de megafonía (ding-dong)
+function chime(){ if(!audio()) return; tone(659.25,0,1.6,.10); tone(523.25,.55,1.9,.10); }
+// sonidos de cabina ocasionales
+const CABIN_SOUNDS = {
+  seatbelt(){ tone(1046.5,0,2.2,.045); tone(2093,0,1.2,.008); },                 // "bong" de cinturones
+  call(){ tone(1318.5,0,.9,.035); tone(1318.5,.35,1.1,.035); },                  // llamada a TCP
+  lowDing(){ tone(587.3,0,2.4,.05); },                                           // ding grave
+  interphone(){ tone(880,0,.35,.03); tone(880,.18,.35,.03); tone(880,.36,.5,.03); }, // interfono cabina-cockpit
+  click(){ // clic de micrófono
+    const c=actx, len=c.sampleRate*.06, buf=c.createBuffer(1,len,c.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
+    const src=c.createBufferSource(); src.buffer=buf; const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; const g=c.createGain(); g.gain.value=.06;
+    src.connect(bp).connect(g).connect(master); src.start();
+  },
+};
+function scheduleAmbient(){
+  clearTimeout(ambTimer);
+  ambTimer = setTimeout(() => {
+    if(noise && actx && actx.state==='running'){
+      const keys=['seatbelt','call','lowDing','interphone','click','seatbelt','lowDing'];
+      CABIN_SOUNDS[keys[Math.floor(Math.random()*keys.length)]]();
+    }
+    scheduleAmbient();
+  }, (75 + Math.random()*165) * 1000); // cada 1–4 min aprox.
 }
 function setNoise(on, persist=true){
   const c=audio(); if(!c) return;
-  if(!on){ if(noise){ const n=noise; n.g.gain.setTargetAtTime(0,c.currentTime,.4); setTimeout(()=>{ try{n.src.stop();}catch(e){} },1500); noise=null; } $('bNoise').classList.remove('on'); $('bNoise').textContent='🔈 Ruido de cabina'; if(persist) LS.set('vp_noise',false); return; }
+  const btn=$('bNoise');
+  if(!on){
+    if(noise){ const n=noise; n.g.gain.setTargetAtTime(0,c.currentTime,.6); setTimeout(()=>{ n.nodes.forEach(x=>{ try{x.stop();}catch(e){} }); },2500); noise=null; }
+    clearTimeout(ambTimer);
+    btn.classList.remove('on'); btn.textContent='🔈 Sonido de cabina'; if(persist) LS.set('vp_noise',false); return;
+  }
   if(noise) return;
-  const len=c.sampleRate*6, buf=c.createBuffer(2,len,c.sampleRate);
+  const g=c.createGain(); g.gain.value=0; g.connect(master);
+  // 1) rumor de aire (ruido marrón filtrado)
+  const len=c.sampleRate*8, buf=c.createBuffer(2,len,c.sampleRate);
   for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch); let last=0; for(let i=0;i<len;i++){ const w=Math.random()*2-1; last=(last+0.02*w)/1.02; d[i]=last*3.2; } }
   const src=c.createBufferSource(); src.buffer=buf; src.loop=true;
-  const lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=520;
-  const g=c.createGain(); g.gain.value=0; g.gain.setTargetAtTime(.55,c.currentTime,.8);
-  src.connect(lp).connect(g).connect(c.destination); src.start();
-  noise={src,g};
-  $('bNoise').classList.add('on'); $('bNoise').textContent='🔊 Ruido de cabina'; LS.set('vp_noise',true);
+  const lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420; lp.Q.value=.4;
+  const airG=c.createGain(); airG.gain.value=.55;
+  // respiración lenta del filtro (sensación de flujo de aire)
+  const lfo=c.createOscillator(), lfoG=c.createGain(); lfo.frequency.value=.05; lfoG.gain.value=90; lfo.connect(lfoG).connect(lp.frequency);
+  src.connect(lp).connect(airG).connect(g);
+  // 2) zumbido grave de motores (dos osciladores ligeramente desafinados)
+  const hum=c.createBiquadFilter(); hum.type='lowpass'; hum.frequency.value=160;
+  const humG=c.createGain(); humG.gain.value=.05;
+  const o1=c.createOscillator(), o2=c.createOscillator(), o3=c.createOscillator();
+  o1.type='sawtooth'; o1.frequency.value=72; o2.type='sawtooth'; o2.frequency.value=72.6; o3.type='sine'; o3.frequency.value=144.3;
+  const o3g=c.createGain(); o3g.gain.value=.4;
+  o1.connect(hum); o2.connect(hum); o3.connect(o3g).connect(hum); hum.connect(humG).connect(g);
+  // 3) siseo agudo muy suave del aire acondicionado
+  const src2=c.createBufferSource(); src2.buffer=buf; src2.loop=true; src2.playbackRate.value=1.7;
+  const hp=c.createBiquadFilter(); hp.type='bandpass'; hp.frequency.value=2400; hp.Q.value=.6;
+  const hissG=c.createGain(); hissG.gain.value=.012;
+  src2.connect(hp).connect(hissG).connect(g);
+  [src,src2,lfo,o1,o2,o3].forEach(n=>n.start());
+  g.gain.setTargetAtTime(.9,c.currentTime,1.5); // entrada suave
+  noise={g, nodes:[src,src2,lfo,o1,o2,o3]};
+  scheduleAmbient();
+  btn.classList.add('on'); btn.textContent='🔊 Sonido de cabina'; if(persist) LS.set('vp_noise',true);
 }
+// tras recargar con un vuelo en curso, el navegador exige un toque para reanudar el audio
+document.addEventListener('pointerdown', () => { if(flight && flight.start && !noise && LS.get('vp_noise',true)) setNoise(true); else audio(); }, { once:true });
 
 /* ---- megafonía ---- */
 function say(who, text, sound=true){
@@ -950,7 +1011,7 @@ function board(){
   flight.start = Date.now(); flight.pausedTotal=0; flight.pausedAt=null; flight.said={}; flight.msgs=[]; flight.nextMsg=0;
   saveFlight();
   audio();
-  if(LS.get('vp_noise',false)) setNoise(true);
+  if(LS.get('vp_noise',true)) setNoise(true);
   try{ if('Notification' in window && Notification.permission==='default') Notification.requestPermission(); }catch(e){}
   enterFlightMode();
 }
@@ -1096,6 +1157,8 @@ $('chips').addEventListener('change', e => { if(e.target.id==='studyCustom'){ co
 $('sugg').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(!b) return; const d=AP[b.dataset.i]; const dist=distKm(AP[S.origin],d); if(ACF[S.ac].range<dist) S.ac=bestAircraftFor(dist).id; S.dest=d.iata; savePref(); syncInputs(); renderPlan(); drawRoute(); });
 $('bPause').onclick = togglePause;
 $('bNoise').onclick = () => setNoise(!noise);
+$('vol').value = vol;
+$('vol').oninput = e => { audio(); setVolume(+e.target.value); };
 $('bFollow').onclick = () => { follow=!follow; $('bFollow').classList.toggle('on',follow); if(follow){ map && map.setZoom(Math.max(map.getZoom(),6)); tick(true); } else fitRoute(); };
 $('bPass').onclick = () => flight && showPass(flight,'view');
 $('bFull').onclick = () => { try{ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }catch(e){} };
