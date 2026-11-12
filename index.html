@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vuelo Privado · Temporizador de estudio</title>
+<meta name="description" content="Vuelo Privado: temporizador de estudio con simulador de vuelo en jet privado.">
+<meta name="theme-color" content="#0b0d12">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#0b0d12; --panel:rgba(13,16,23,.88); --panel2:rgba(22,26,36,.9);
+  --line:rgba(212,175,106,.22); --line2:rgba(255,255,255,.08);
+  --gold:#d4af6a; --gold2:#f1d9a4; --gold3:#9c7c42;
+  --text:#ece7dc; --muted:#948e83; --green:#7ed6a0; --red:#ef7f7f;
+  --serif:'Cormorant Garamond',Georgia,serif; --sans:'Manrope',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;color:inherit}
+#map{position:fixed;inset:0;z-index:0;background:#0b0d12}
+.leaflet-container{background:#0b0d12;font-family:var(--sans)}
+.leaflet-control-attribution{background:rgba(0,0,0,.55)!important;color:#777!important;font-size:10px}
+.leaflet-control-attribution a{color:#999!important}
+.leaflet-bar a{background:var(--panel)!important;color:var(--gold)!important;border-color:var(--line)!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+.leaflet-popup-content{margin:12px 14px;font-size:13px}
+.vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+/* top bar */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;padding-top:max(14px,env(safe-area-inset-top));background:linear-gradient(180deg,rgba(8,10,14,.92),rgba(8,10,14,0));pointer-events:none}
+.topbar>*{pointer-events:auto}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-logo{width:38px;height:38px}
+.brand-name{font-family:var(--serif);font-weight:700;font-size:24px;letter-spacing:.18em;color:var(--gold2);line-height:1}
+.brand-sub{font-size:9.5px;letter-spacing:.32em;color:var(--muted);margin-top:4px;text-transform:uppercase}
+.top-actions{display:flex;gap:8px;align-items:center}
+.pill{white-space:nowrap;display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:12.5px;font-weight:600;letter-spacing:.02em;backdrop-filter:blur(10px)}
+.pill:hover{border-color:var(--gold)}
+.tier-dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.12)}
+
+/* panels */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 20px 60px rgba(0,0,0,.45)}
+#plan{position:fixed;z-index:10;top:84px;left:20px;width:410px;max-height:calc(100% - 104px);overflow-y:auto;padding:20px;scrollbar-width:thin;scrollbar-color:var(--gold3) transparent}
+.h-sec{font-size:10.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.h-sec:after{content:"";flex:1;height:1px;background:var(--line)}
+.greet{font-family:var(--serif);font-size:25px;line-height:1.15;margin-bottom:4px}
+.greet em{color:var(--gold2);font-style:italic}
+.greet-sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+.field{position:relative;margin-bottom:10px}
+.field label{display:block;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-weight:600}
+.inp{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:12px;padding:12px 14px;font-size:15px;font-weight:600;outline:none;transition:border .2s}
+.inp:focus{border-color:var(--gold)}
+.inp::placeholder{color:#6b665e;font-weight:500}
+select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--gold) 50%),linear-gradient(135deg,var(--gold) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat;padding-right:36px}
+select.inp option{background:#151922;color:var(--text)}
+.combo-list{position:absolute;left:0;right:0;top:100%;margin-top:4px;max-height:260px;overflow-y:auto;background:#141821;border:1px solid var(--line);border-radius:12px;z-index:50;box-shadow:0 16px 40px rgba(0,0,0,.6)}
+.opt{padding:9px 12px;font-size:13.5px;cursor:pointer;display:flex;gap:8px;align-items:baseline;border-bottom:1px solid rgba(255,255,255,.04)}
+.opt:hover,.opt.active{background:rgba(212,175,106,.12)}
+.opt b{font-family:var(--mono);color:var(--gold2);font-weight:600;min-width:34px}
+.opt small{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.od-wrap{position:relative}
+.swap{position:absolute;right:12px;top:50%;transform:translateY(-6px);z-index:5;width:34px;height:34px;border-radius:50%;background:#1a1f2a;border:1px solid var(--line);color:var(--gold);font-size:16px;display:grid;place-items:center}
+.swap:hover{border-color:var(--gold);transform:translateY(-6px) rotate(180deg);transition:transform .35s}
+.summary{margin:14px 0 4px;border:1px solid var(--line);border-radius:14px;padding:14px;background:linear-gradient(135deg,rgba(212,175,106,.08),rgba(212,175,106,.01))}
+.sum-route{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.sum-iata{font-family:var(--serif);font-size:34px;font-weight:700;color:var(--gold2);line-height:1}
+.sum-city{font-size:11.5px;color:var(--muted);margin-top:3px}
+.sum-mid{flex:1;text-align:center;color:var(--gold);font-size:12px;position:relative}
+.sum-mid:before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px dashed var(--gold3)}
+.sum-mid span{position:relative;background:#12151c;padding:0 8px;font-size:18px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:rgba(0,0,0,.25);border-radius:10px;padding:9px 10px}
+.stat .k{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.stat .v{font-family:var(--mono);font-size:15px;font-weight:600;margin-top:3px;color:var(--text)}
+.note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.45}
+.note b{color:var(--gold2)}
+.warn{color:var(--red)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:14px 18px;border-radius:13px;font-weight:800;font-size:14px;letter-spacing:.06em;text-transform:uppercase;transition:transform .15s,filter .2s,opacity .2s}
+.btn:active{transform:scale(.98)}
+.btn-gold{background:linear-gradient(135deg,#f3dca5,#c79d55 55%,#a87e3c);color:#17120a;box-shadow:0 10px 30px rgba(212,175,106,.25)}
+.btn-gold:hover{filter:brightness(1.07)}
+.btn-gold:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(.6)}
+.btn-ghost{border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text)}
+.btn-ghost:hover{border-color:var(--gold)}
+.btn-danger{border:1px solid rgba(239,127,127,.35);color:var(--red);background:rgba(239,127,127,.06)}
+.btn-block{width:100%}
+.sep{height:1px;background:var(--line2);margin:20px 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{padding:7px 12px;border-radius:999px;border:1px solid var(--line2);background:rgba(255,255,255,.03);font-size:12.5px;font-weight:700}
+.chip.on,.chip:hover{border-color:var(--gold);color:var(--gold2);background:rgba(212,175,106,.1)}
+.chip-inp{width:74px;padding:7px 10px;border-radius:999px;border:1px solid var(--line2);background:rgba(255,255,255,.03);font-size:12.5px;font-weight:700;outline:none;text-align:center}
+.sugg{display:flex;flex-direction:column;gap:6px}
+.sugg-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line2);text-align:left;width:100%}
+.sugg-item:hover{border-color:var(--gold);background:rgba(212,175,106,.07)}
+.sugg-item .fl{font-size:18px}
+.sugg-item .nm{flex:1;font-size:13.5px;font-weight:600}
+.sugg-item .nm small{display:block;color:var(--muted);font-weight:500;font-size:11.5px}
+.sugg-item .tm{font-family:var(--mono);font-size:13px;color:var(--gold2)}
+.row{display:flex;gap:8px}
+
+/* map markers */
+.plane-icon{font-size:30px;line-height:36px;text-align:center;filter:drop-shadow(0 0 8px rgba(241,217,164,.7)) drop-shadow(0 2px 3px rgba(0,0,0,.8))}
+.plane-icon div{transition:transform .3s}
+.ap-label{white-space:nowrap}
+.ap-pin{position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;background:var(--gold);border:3px solid #0b0d12;box-shadow:0 0 0 2px var(--gold),0 0 18px rgba(212,175,106,.8)}
+.ap-tag{position:absolute;left:14px;top:-17px;background:rgba(11,13,18,.92);border:1px solid var(--line);padding:5px 9px;border-radius:9px;font-size:12px;font-weight:700;color:var(--text)}
+.ap-tag small{display:block;font-size:8.5px;letter-spacing:.22em;color:var(--gold);font-weight:800}
+.ap-tag b{font-family:var(--mono);color:var(--gold2)}
+.pop-btns{display:flex;gap:6px;margin-top:8px}
+.pop-btns button{flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--line);font-size:11.5px;font-weight:700;color:var(--gold2)}
+.pop-btns button:hover{background:rgba(212,175,106,.12)}
+
+/* flight HUD */
+#hud{position:fixed;z-index:10;left:50%;bottom:20px;transform:translateX(-50%);width:min(980px,calc(100% - 40px));padding:18px 22px 16px;display:none;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+body.flying #hud{display:block}
+body.flying #plan{display:none}
+#phasePill{position:fixed;z-index:15;top:80px;left:50%;transform:translateX(-50%);display:none}
+body.flying #phasePill{display:flex}
+.phase{display:flex;align-items:center;gap:10px;padding:9px 16px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;backdrop-filter:blur(10px);white-space:nowrap}
+.phase .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);animation:blink 1.6s infinite}
+.phase.paused .dot{background:#f0c36a;box-shadow:0 0 10px #f0c36a}
+@keyframes blink{50%{opacity:.35}}
+.phase .fn{font-family:var(--mono);color:var(--gold2);letter-spacing:.06em}
+.hud-top{display:flex;align-items:center;gap:22px}
+.hud-route{min-width:150px}
+.hud-route .r{font-family:var(--serif);font-size:30px;font-weight:700;color:var(--gold2);line-height:1}
+.hud-route .c{font-size:12px;color:var(--muted);margin-top:4px}
+.hud-timer{flex:1;text-align:center}
+.hud-timer .lbl{font-size:10px;letter-spacing:.3em;color:var(--muted);text-transform:uppercase;font-weight:700}
+.hud-timer .t{font-family:var(--mono);font-size:54px;font-weight:600;letter-spacing:.02em;line-height:1.05;color:#fff;text-shadow:0 0 30px rgba(241,217,164,.25)}
+.hud-stats{display:grid;grid-template-columns:repeat(3,auto);gap:6px 18px;text-align:right}
+.hud-stats .k{font-size:9.5px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase;font-weight:700}
+.hud-stats .v{font-family:var(--mono);font-size:14px;font-weight:600}
+.prog{position:relative;height:6px;border-radius:6px;background:rgba(255,255,255,.07);margin:16px 0 14px}
+.prog-fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:linear-gradient(90deg,var(--gold3),var(--gold2));width:0}
+.prog-plane{position:absolute;top:50%;transform:translate(-50%,-55%);font-size:18px;left:0;filter:drop-shadow(0 0 6px rgba(241,217,164,.6))}
+.prog-lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px}
+.hud-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.hbtn{padding:9px 14px;border-radius:11px;border:1px solid var(--line2);background:rgba(255,255,255,.04);font-size:12.5px;font-weight:700;display:inline-flex;gap:7px;align-items:center}
+.hbtn:hover,.hbtn.on{border-color:var(--gold);color:var(--gold2)}
+.hbtn.danger{color:var(--red);border-color:rgba(239,127,127,.25)}
+#pa{position:fixed;z-index:12;top:84px;right:20px;width:330px;display:none;padding:14px 16px;max-height:44vh;overflow:hidden}
+body.flying #pa{display:block}
+#pa.collapsed .pa-list{display:none}
+.pa-head{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);font-weight:800;cursor:pointer}
+.pa-list{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.msg{font-size:12.8px;line-height:1.45;padding:9px 11px;border-radius:11px;background:rgba(255,255,255,.035);border-left:2px solid var(--gold3);animation:msgIn .5s ease}
+.msg .who{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:800;margin-bottom:2px;display:flex;justify-content:space-between}
+.msg .who span{color:var(--muted);font-family:var(--mono);letter-spacing:0}
+.msg:not(:first-child){opacity:.6}
+@keyframes msgIn{from{opacity:0;transform:translateY(-8px)}}
+.crewline{font-size:11.5px;color:var(--muted);margin-top:10px;text-align:center}
+.crewline b{color:var(--text);font-weight:600}
+
+/* modals */
+.modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(4,5,8,.72);backdrop-filter:blur(6px)}
+.modal.open{display:flex;animation:fade .25s}
+@keyframes fade{from{opacity:0}}
+.modal-box{width:min(900px,100%);max-height:calc(100% - 20px);overflow-y:auto;padding:22px;scrollbar-width:thin}
+.modal-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+.modal-title{font-family:var(--serif);font-size:30px;text-align:center;color:var(--gold2);margin-bottom:4px}
+.modal-sub{text-align:center;color:var(--muted);font-size:13.5px;margin-bottom:16px}
+
+/* boarding pass */
+.bp-wrap{display:flex;justify-content:center}
+.bp{display:flex;width:860px;max-width:100%;border-radius:22px;overflow:hidden;color:#1d1a14;background:#f7f2e6;box-shadow:0 30px 80px rgba(0,0,0,.55);position:relative;font-family:var(--sans)}
+.bp-main{flex:1;padding:0;position:relative;min-width:0}
+.bp-head{display:flex;justify-content:space-between;align-items:center;padding:18px 26px;background:linear-gradient(135deg,#0d1017,#1b2130);color:var(--gold2)}
+.bp-brand{display:flex;align-items:center;gap:10px}
+.bp-brand svg{width:34px;height:34px}
+.bp-brand .n{font-family:var(--serif);font-size:22px;font-weight:700;letter-spacing:.2em;line-height:1}
+.bp-brand .s{font-size:8.5px;letter-spacing:.34em;color:#9b927f;margin-top:3px}
+.bp-type{text-align:right;font-size:9px;letter-spacing:.26em;color:#9b927f;font-weight:700;line-height:1.6}
+.bp-type b{display:block;color:var(--gold2);font-size:11px;letter-spacing:.2em}
+.bp-body{padding:18px 26px 20px;background:radial-gradient(circle at 92% 10%,rgba(212,175,106,.18),transparent 40%),#f7f2e6}
+.bp-k{font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:#8a7f69;font-weight:800}
+.bp-v{font-size:14.5px;font-weight:700;margin-top:2px;color:#1d1a14}
+.bp-v.mono{font-family:var(--mono);font-weight:600}
+.bp-pax{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding-bottom:12px;border-bottom:1px solid #e3d8c0}
+.bp-pax .name{font-family:var(--serif);font-size:27px;font-weight:700;letter-spacing:.03em;line-height:1.05}
+.bp-pax .alias{font-size:11px;letter-spacing:.24em;color:#a07b3a;font-weight:800;margin-top:3px}
+.bp-vip{border:1.5px solid #b28a46;color:#8c6a2f;font-size:9.5px;letter-spacing:.24em;padding:6px 10px;border-radius:8px;font-weight:800;white-space:nowrap}
+.bp-route{display:flex;align-items:center;gap:14px;padding:14px 0}
+.bp-route .iata{font-family:var(--serif);font-size:56px;font-weight:700;line-height:.95;color:#14110c}
+.bp-route .city{font-size:12px;font-weight:600;color:#5f5646}
+.bp-route .end{text-align:right}
+.bp-mid{flex:1;text-align:center;position:relative;color:#a07b3a}
+.bp-mid .ln{position:relative;height:20px}
+.bp-mid .ln:before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px dotted #c9b38a}
+.bp-mid .ln span{position:relative;background:#f7f2e6;padding:0 10px;font-size:20px;line-height:20px}
+.bp-mid .d{font-family:var(--mono);font-size:11.5px;font-weight:600;color:#6d6250;margin-top:4px}
+.bp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 14px;padding:12px 0;border-top:1px solid #e3d8c0}
+.bp-crew{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px 14px;margin-top:4px;border-radius:12px;background:#efe6d2}
+.bp-foot{display:flex;justify-content:space-between;gap:12px;font-size:10.5px;color:#6d6250;margin-top:12px;line-height:1.5}
+.bp-foot b{color:#3a3328}
+.bp-stub{width:230px;flex:none;background:#efe6d2;padding:0;position:relative;border-left:2px dashed #cdbd9c;display:flex;flex-direction:column}
+.bp-stub:before,.bp-stub:after{content:"";position:absolute;left:-14px;width:26px;height:26px;border-radius:50%;background:var(--notch,#11141b)}
+.bp-stub:before{top:-13px}.bp-stub:after{bottom:-13px}
+.bp-stub-head{background:linear-gradient(135deg,#0d1017,#1b2130);color:var(--gold2);padding:18px 18px;font-family:var(--serif);font-weight:700;letter-spacing:.2em;font-size:15px;height:70px;display:flex;align-items:center}
+.bp-stub-body{padding:16px 18px;display:flex;flex-direction:column;gap:10px;flex:1}
+.bp-stub .r2{font-family:var(--serif);font-size:30px;font-weight:700;line-height:1}
+.bp-bar{margin-top:auto;padding-top:8px}
+.bp-bar svg{width:100%;height:58px;display:block}
+.bp-bar .code{font-family:var(--mono);font-size:9.5px;text-align:center;letter-spacing:.2em;color:#5f5646;margin-top:3px}
+
+/* logbook */
+.lb-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.lb-stat{border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;background:rgba(255,255,255,.02)}
+.lb-stat .v{font-family:var(--serif);font-size:32px;color:var(--gold2);font-weight:700;line-height:1}
+.lb-stat .k{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:6px;font-weight:700}
+.tier-card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg,rgba(212,175,106,.1),transparent)}
+.tier-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:8px}
+.tier-row b{font-family:var(--serif);font-size:22px;color:var(--gold2)}
+.tier-bar{height:6px;background:rgba(255,255,255,.07);border-radius:6px;overflow:hidden}
+.tier-bar div{height:100%;background:linear-gradient(90deg,var(--gold3),var(--gold2))}
+.lb-list{display:flex;flex-direction:column;gap:6px}
+.lb-item{display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;padding:11px 14px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line2);text-align:left;width:100%}
+.lb-item:hover{border-color:var(--gold)}
+.lb-item .rt{font-family:var(--mono);font-weight:600;color:var(--gold2)}
+.lb-item .meta{font-size:12px;color:var(--muted)}
+.lb-item .meta b{color:var(--text);font-weight:600}
+.lb-item .st{font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;padding:4px 8px;border-radius:6px}
+.st.ok{color:var(--green);background:rgba(126,214,160,.1)}
+.st.ko{color:var(--red);background:rgba(239,127,127,.1)}
+.empty{text-align:center;color:var(--muted);padding:30px;font-size:14px}
+.land-big{font-size:64px;text-align:center;margin-bottom:6px}
+.land-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:560px;margin:0 auto}
+.toast{position:fixed;z-index:200;left:50%;top:20px;transform:translate(-50%,-220%);padding:12px 18px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);font-size:13.5px;font-weight:600;transition:transform .35s ease;max-width:90%}
+.toast.show{transform:translate(-50%,0)}
+
+@media (max-width:420px){ #tierName{display:none} }
+@media (max-width:820px){
+  .topbar{padding:10px 14px}
+  .brand-name{font-size:17px;letter-spacing:.12em;white-space:nowrap}.brand-sub{display:none}.brand-logo{width:32px;height:32px}
+  .pill .lbl{display:none}
+  .top-actions{gap:6px}.pill{padding:8px 11px}
+  #tierName{font-size:11.5px}
+  #plan{left:10px;right:10px;width:auto;top:auto;bottom:10px;max-height:58%;padding:16px;border-radius:20px}
+  #hud{bottom:10px;width:calc(100% - 20px);padding:14px}
+  .hud-top{flex-wrap:wrap;gap:10px}
+  .hud-route{min-width:0}
+  .hud-route .r{font-size:22px}
+  .hud-timer{order:-1;flex-basis:100%}
+  .hud-timer .t{font-size:42px}
+  .hud-stats{grid-template-columns:repeat(3,1fr);text-align:left;flex:1}
+  #pa{left:10px;right:10px;width:auto;top:120px;max-height:26vh}
+  #phasePill{top:62px}
+  .phase{font-size:10.5px;padding:7px 12px}
+  .bp{flex-direction:column}
+  .bp-stub{width:100%;border-left:none;border-top:2px dashed #cdbd9c}
+  .bp-stub:before,.bp-stub:after{display:none}
+  .bp-stub-head{height:auto;padding:12px 18px}
+  .bp-route .iata{font-size:42px}
+  .bp-grid{grid-template-columns:repeat(2,1fr)}
+  .bp-crew{grid-template-columns:1fr}
+  .bp-pax .name{font-size:22px}
+  .lb-stats{grid-template-columns:repeat(2,1fr)}
+  .lb-item{grid-template-columns:1fr auto}
+  .lb-item .hide-m{display:none}
+  .land-stats{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="vignette"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-logo" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3dca5"/><stop offset="1" stop-color="#a87e3c"/></linearGradient></defs><circle cx="32" cy="32" r="30" fill="#0d1017" stroke="url(#lg)" stroke-width="2"/><path d="M14 36 L50 22 L46 28 L30 34 L26 44 L22 44 L24 35 Z" fill="url(#lg)"/><path d="M18 46 H46" stroke="url(#lg)" stroke-width="1.5" opacity=".6"/></svg>
+    <div><div class="brand-name">VUELO PRIVADO</div><div class="brand-sub">Study flight · Private aviation</div></div>
+  </div>
+  <div class="top-actions">
+    <button class="pill" id="btnClub" title="Club Vuelo Privado"><span class="tier-dot" id="tierDot"></span><span id="tierName">Silver</span></button>
+    <button class="pill" id="btnLog">📖 <span class="lbl">Bitácora</span></button>
+  </div>
+</header>
+
+<!-- PLANNER -->
+<aside id="plan" class="panel">
+  <div class="greet" id="greet">Buenas tardes, <em>Comandante Supremo</em>.</div>
+  <div class="greet-sub">Su jet está listo. ¿A dónde volamos hoy?</div>
+
+  <div class="h-sec">Plan de vuelo</div>
+  <div class="od-wrap">
+    <div class="field">
+      <label>Salida</label>
+      <input class="inp" id="inOrigin" autocomplete="off" placeholder="Ciudad o código (MAD)">
+      <div class="combo-list" id="lsOrigin" hidden></div>
+    </div>
+    <button class="swap" id="btnSwap" title="Intercambiar">⇅</button>
+    <div class="field">
+      <label>Destino</label>
+      <input class="inp" id="inDest" autocomplete="off" placeholder="¿A dónde le llevamos?">
+      <div class="combo-list" id="lsDest" hidden></div>
+    </div>
+  </div>
+  <div class="field">
+    <label>Aeronave</label>
+    <select class="inp" id="selAc"></select>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <button class="btn btn-gold btn-block" id="btnBook" style="margin-top:12px">🎫 Emitir tarjeta de embarque</button>
+  <button class="btn btn-ghost btn-block" id="btnRandom" style="margin-top:8px">🎲 Destino sorpresa</button>
+
+  <div class="sep"></div>
+  <div class="h-sec">¿Cuánto quiere estudiar?</div>
+  <div class="chips" id="chips"></div>
+  <div class="sugg" id="sugg"></div>
+  <div class="note">Le proponemos destinos desde <b id="suggFrom">—</b> cuyo tiempo de vuelo se ajusta a su sesión de estudio.</div>
+</aside>
+
+<!-- FLIGHT HUD -->
+<div id="phasePill"><div class="phase" id="phase"><span class="dot"></span><span id="phaseTxt">Rodaje</span><span class="fn" id="phaseFn"></span></div></div>
+
+<div id="pa" class="panel">
+  <div class="pa-head" id="paHead">📢 Megafonía de cabina <span id="paToggle">–</span></div>
+  <div class="pa-list" id="paList"></div>
+</div>
+
+<section id="hud" class="panel">
+  <div class="hud-top">
+    <div class="hud-route"><div class="r" id="hRoute">MAD ✈ JMK</div><div class="c" id="hCities">Madrid → Mykonos</div></div>
+    <div class="hud-timer"><div class="lbl" id="hTimerLbl">Tiempo restante</div><div class="t" id="hTimer">00:00</div></div>
+    <div class="hud-stats">
+      <div><div class="k">Transcurrido</div><div class="v" id="hEl">0:00</div></div>
+      <div><div class="k">Altitud</div><div class="v" id="hAlt">0 ft</div></div>
+      <div><div class="k">Velocidad</div><div class="v" id="hSpd">0 km/h</div></div>
+      <div><div class="k">Restante</div><div class="v" id="hKm">0 km</div></div>
+      <div><div class="k">Recorrido</div><div class="v" id="hPct">0%</div></div>
+      <div><div class="k">Llegada</div><div class="v" id="hEta">--:--</div></div>
+    </div>
+  </div>
+  <div class="prog"><div class="prog-fill" id="pFill"></div><div class="prog-plane" id="pPlane">✈️</div></div>
+  <div class="prog-lbl"><span id="pFrom">MAD</span><span id="pTo">JMK</span></div>
+  <div class="hud-btns">
+    <button class="hbtn" id="bPause">⏸ Pausar</button>
+    <button class="hbtn" id="bNoise">🔈 Ruido de cabina</button>
+    <button class="hbtn" id="bFollow">🎯 Seguir avión</button>
+    <button class="hbtn" id="bPass">🎫 Tarjeta</button>
+    <button class="hbtn" id="bFull">⛶ Pantalla completa</button>
+    <button class="hbtn danger" id="bAbort">⚠️ Desviar vuelo</button>
+  </div>
+  <div class="crewline" id="crewline"></div>
+</section>
+
+<!-- MODALS -->
+<div class="modal" id="mPass"><div class="modal-box">
+  <div class="modal-title" id="mPassTitle">Tarjeta de embarque</div>
+  <div class="modal-sub" id="mPassSub">Su tripulación le espera a pie de avión.</div>
+  <div class="bp-wrap" id="bpHolder"></div>
+  <div class="modal-actions" id="mPassActions"></div>
+</div></div>
+
+<div class="modal" id="mLand"><div class="modal-box panel" style="max-width:680px">
+  <div class="land-big">🛬</div>
+  <div class="modal-title" id="landTitle">Bienvenido</div>
+  <div class="modal-sub" id="landSub"></div>
+  <div class="land-stats" id="landStats"></div>
+  <div class="modal-actions">
+    <button class="btn btn-gold" id="landNext">✈️ Nuevo vuelo</button>
+    <button class="btn btn-ghost" id="landLog">📖 Ver bitácora</button>
+  </div>
+</div></div>
+
+<div class="modal" id="mLog"><div class="modal-box panel" style="max-width:760px">
+  <div class="modal-title">Bitácora de vuelo</div>
+  <div class="modal-sub">Gorka Corbacho Martínez · «Comandante Supremo»</div>
+  <div class="lb-stats" id="lbStats"></div>
+  <div class="tier-card" id="tierCard"></div>
+  <div class="lb-list" id="lbList"></div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" data-close>Cerrar</button>
+    <button class="btn btn-danger" id="lbClear">Borrar bitácora</button>
+  </div>
+</div></div>
+
+<div class="modal" id="mConfirm"><div class="modal-box panel" style="max-width:440px;text-align:center">
+  <div class="modal-title" id="cfTitle" style="font-size:26px"></div>
+  <div class="modal-sub" id="cfText"></div>
+  <div class="modal-actions"><button class="btn btn-ghost" id="cfNo">Cancelar</button><button class="btn btn-gold" id="cfYes">Aceptar</button></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* =================== DATOS =================== */
+const PAX = { name: 'GORKA CORBACHO MARTÍNEZ', alias: 'COMANDANTE SUPREMO' };
+
+const COUNTRIES = {ES:'España',PT:'Portugal',FR:'Francia',CH:'Suiza',GB:'Reino Unido',IE:'Irlanda',NL:'Países Bajos',BE:'Bélgica',DE:'Alemania',AT:'Austria',CZ:'Chequia',DK:'Dinamarca',SE:'Suecia',NO:'Noruega',FI:'Finlandia',IS:'Islandia',PL:'Polonia',HU:'Hungría',GR:'Grecia',IT:'Italia',MT:'Malta',MC:'Mónaco',TR:'Turquía',MA:'Marruecos',EG:'Egipto',AE:'Emiratos Árabes',QA:'Catar',SA:'Arabia Saudí',MV:'Maldivas',SC:'Seychelles',MU:'Mauricio',ZA:'Sudáfrica',KE:'Kenia',TZ:'Tanzania',IN:'India',SG:'Singapur',HK:'Hong Kong',TH:'Tailandia',ID:'Indonesia',JP:'Japón',KR:'Corea del Sur',CN:'China',AU:'Australia',NZ:'Nueva Zelanda',US:'Estados Unidos',CA:'Canadá',MX:'México',BL:'San Bartolomé',DO:'Rep. Dominicana',CU:'Cuba',BS:'Bahamas',CO:'Colombia',PE:'Perú',CL:'Chile',AR:'Argentina',BR:'Brasil'};
+
+const AIRPORTS = [
+ ['MAD','Madrid','Adolfo Suárez Madrid-Barajas','ES',40.4983,-3.5676],
+ ['BCN','Barcelona','Josep Tarradellas El Prat','ES',41.2974,2.0833],
+ ['BIO','Bilbao','Aeropuerto de Bilbao','ES',43.3011,-2.9106],
+ ['EAS','San Sebastián','Aeropuerto de San Sebastián','ES',43.3565,-1.7906],
+ ['VIT','Vitoria','Aeropuerto de Vitoria','ES',42.8828,-2.7244],
+ ['PNA','Pamplona','Aeropuerto de Pamplona','ES',42.7700,-1.6463],
+ ['SDR','Santander','Seve Ballesteros','ES',43.4271,-3.8200],
+ ['OVD','Asturias','Aeropuerto de Asturias','ES',43.5636,-6.0346],
+ ['SCQ','Santiago','Rosalía de Castro','ES',42.8963,-8.4151],
+ ['ZAZ','Zaragoza','Aeropuerto de Zaragoza','ES',41.6662,-1.0416],
+ ['VLC','Valencia','Aeropuerto de Valencia','ES',39.4893,-0.4816],
+ ['ALC','Alicante','Miguel Hernández','ES',38.2822,-0.5582],
+ ['SVQ','Sevilla','San Pablo','ES',37.4180,-5.8931],
+ ['AGP','Málaga · Marbella','Costa del Sol','ES',36.6749,-4.4991],
+ ['PMI','Palma de Mallorca','Son Sant Joan','ES',39.5517,2.7388],
+ ['IBZ','Ibiza','Aeropuerto de Ibiza','ES',38.8729,1.3731],
+ ['MAH','Menorca','Aeropuerto de Menorca','ES',39.8626,4.2186],
+ ['LPA','Gran Canaria','Aeropuerto de Gran Canaria','ES',27.9319,-15.3866],
+ ['TFS','Tenerife','Tenerife Sur','ES',28.0445,-16.5725],
+ ['ACE','Lanzarote','César Manrique','ES',28.9455,-13.6052],
+ ['LIS','Lisboa','Humberto Delgado','PT',38.7742,-9.1342],
+ ['OPO','Oporto','Francisco Sá Carneiro','PT',41.2481,-8.6814],
+ ['FAO','Faro · Algarve','Aeropuerto de Faro','PT',37.0144,-7.9659],
+ ['LBG','París','Le Bourget (aviación ejecutiva)','FR',48.9694,2.4414],
+ ['NCE','Niza · Mónaco','Côte d\'Azur','FR',43.6584,7.2159],
+ ['LTT','Saint-Tropez','La Môle','FR',43.2054,6.4820],
+ ['CVF','Courchevel','Altiport de Courchevel','FR',45.3967,6.6347],
+ ['BIQ','Biarritz','Pays Basque','FR',43.4684,-1.5311],
+ ['GVA','Ginebra','Aeropuerto de Ginebra','CH',46.2381,6.1090],
+ ['ZRH','Zúrich','Aeropuerto de Zúrich','CH',47.4647,8.5492],
+ ['SMV','St. Moritz','Engadin Samedan','CH',46.5340,9.8840],
+ ['FAB','Londres','Farnborough (aviación ejecutiva)','GB',51.2758,-0.7763],
+ ['LCY','Londres City','London City','GB',51.5053,0.0553],
+ ['EDI','Edimburgo','Aeropuerto de Edimburgo','GB',55.9500,-3.3725],
+ ['DUB','Dublín','Aeropuerto de Dublín','IE',53.4213,-6.2701],
+ ['AMS','Ámsterdam','Schiphol','NL',52.3105,4.7683],
+ ['BRU','Bruselas','Zaventem','BE',50.9010,4.4844],
+ ['FRA','Fráncfort','Frankfurt am Main','DE',50.0379,8.5622],
+ ['MUC','Múnich','Franz Josef Strauss','DE',48.3538,11.7861],
+ ['BER','Berlín','Brandenburg','DE',52.3667,13.5033],
+ ['VIE','Viena','Schwechat','AT',48.1103,16.5697],
+ ['SZG','Salzburgo','W. A. Mozart','AT',47.7933,13.0043],
+ ['PRG','Praga','Václav Havel','CZ',50.1008,14.2600],
+ ['CPH','Copenhague','Kastrup','DK',55.6180,12.6561],
+ ['ARN','Estocolmo','Arlanda','SE',59.6519,17.9186],
+ ['OSL','Oslo','Gardermoen','NO',60.1939,11.1004],
+ ['HEL','Helsinki','Helsinki-Vantaa','FI',60.3172,24.9633],
+ ['RVN','Laponia','Rovaniemi','FI',66.5648,25.8304],
+ ['KEF','Reikiavik','Keflavík','IS',63.9850,-22.6056],
+ ['WAW','Varsovia','Chopin','PL',52.1657,20.9671],
+ ['BUD','Budapest','Liszt Ferenc','HU',47.4298,19.2611],
+ ['ATH','Atenas','Eleftherios Venizelos','GR',37.9364,23.9445],
+ ['JMK','Mykonos','Aeropuerto de Mykonos','GR',37.4351,25.3481],
+ ['JTR','Santorini','Aeropuerto de Santorini','GR',36.3992,25.4793],
+ ['CIA','Roma','Ciampino (aviación ejecutiva)','IT',41.7994,12.5949],
+ ['LIN','Milán','Linate','IT',45.4451,9.2767],
+ ['VCE','Venecia','Marco Polo','IT',45.5053,12.3519],
+ ['FLR','Florencia','Peretola','IT',43.8100,11.2051],
+ ['NAP','Nápoles · Capri','Capodichino','IT',40.8860,14.2908],
+ ['OLB','Cerdeña · Costa Esmeralda','Olbia','IT',40.8987,9.5176],
+ ['MLA','Malta','Aeropuerto de Malta','MT',35.8575,14.4775],
+ ['IST','Estambul','Aeropuerto de Estambul','TR',41.2753,28.7519],
+ ['RAK','Marrakech','Menara','MA',31.6069,-8.0363],
+ ['CAI','El Cairo','Aeropuerto de El Cairo','EG',30.1219,31.4056],
+ ['DXB','Dubái','Dubai International','AE',25.2532,55.3657],
+ ['AUH','Abu Dabi','Zayed International','AE',24.4330,54.6511],
+ ['DOH','Doha','Hamad International','QA',25.2731,51.6081],
+ ['RUH','Riad','King Khalid','SA',24.9576,46.6988],
+ ['MLE','Maldivas','Velana (Malé)','MV',4.1918,73.5291],
+ ['SEZ','Seychelles','Mahé','SC',-4.6743,55.5218],
+ ['MRU','Mauricio','Sir Seewoosagur Ramgoolam','MU',-20.4302,57.6836],
+ ['ZNZ','Zanzíbar','Abeid Amani Karume','TZ',-6.2220,39.2249],
+ ['NBO','Nairobi','Jomo Kenyatta','KE',-1.3192,36.9278],
+ ['CPT','Ciudad del Cabo','Cape Town International','ZA',-33.9715,18.6021],
+ ['BOM','Bombay','Chhatrapati Shivaji','IN',19.0896,72.8656],
+ ['DEL','Nueva Delhi','Indira Gandhi','IN',28.5562,77.1000],
+ ['BKK','Bangkok','Suvarnabhumi','TH',13.6900,100.7501],
+ ['HKT','Phuket','Aeropuerto de Phuket','TH',8.1132,98.3169],
+ ['SIN','Singapur','Changi','SG',1.3644,103.9915],
+ ['DPS','Bali','Ngurah Rai','ID',-8.7482,115.1675],
+ ['HKG','Hong Kong','Chek Lap Kok','HK',22.3080,113.9185],
+ ['PEK','Pekín','Capital International','CN',40.0799,116.6031],
+ ['ICN','Seúl','Incheon','KR',37.4602,126.4407],
+ ['HND','Tokio','Haneda','JP',35.5494,139.7798],
+ ['SYD','Sídney','Kingsford Smith','AU',-33.9399,151.1753],
+ ['MEL','Melbourne','Tullamarine','AU',-37.6690,144.8410],
+ ['AKL','Auckland','Aeropuerto de Auckland','NZ',-37.0082,174.7850],
+ ['TEB','Nueva York','Teterboro (aviación ejecutiva)','US',40.8501,-74.0608],
+ ['BOS','Boston','Logan','US',42.3656,-71.0096],
+ ['DCA','Washington D. C.','Reagan National','US',38.8512,-77.0402],
+ ['MIA','Miami','Miami International','US',25.7959,-80.2870],
+ ['ORD','Chicago','O\'Hare','US',41.9742,-87.9073],
+ ['ASE','Aspen','Aspen/Pitkin County','US',39.2232,-106.8688],
+ ['LAS','Las Vegas','Harry Reid','US',36.0840,-115.1537],
+ ['VNY','Los Ángeles','Van Nuys (aviación ejecutiva)','US',34.2098,-118.4900],
+ ['SFO','San Francisco','San Francisco International','US',37.6213,-122.3790],
+ ['HNL','Honolulu','Daniel K. Inouye','US',21.3187,-157.9225],
+ ['YYZ','Toronto','Pearson','CA',43.6777,-79.6248],
+ ['YUL','Montreal','Trudeau','CA',45.4706,-73.7408],
+ ['MEX','Ciudad de México','Benito Juárez','MX',19.4363,-99.0721],
+ ['CUN','Cancún','Aeropuerto de Cancún','MX',21.0365,-86.8771],
+ ['SJD','Los Cabos','Aeropuerto de Los Cabos','MX',23.1518,-109.7210],
+ ['SBH','San Bartolomé','Gustaf III','BL',17.9044,-62.8436],
+ ['NAS','Nassau','Lynden Pindling','BS',25.0390,-77.4662],
+ ['PUJ','Punta Cana','Aeropuerto de Punta Cana','DO',18.5674,-68.3634],
+ ['HAV','La Habana','José Martí','CU',22.9892,-82.4091],
+ ['CTG','Cartagena de Indias','Rafael Núñez','CO',10.4424,-75.5130],
+ ['BOG','Bogotá','El Dorado','CO',4.7016,-74.1469],
+ ['LIM','Lima','Jorge Chávez','PE',-12.0219,-77.1143],
+ ['SCL','Santiago de Chile','Arturo Merino Benítez','CL',-33.3930,-70.7858],
+ ['EZE','Buenos Aires','Ministro Pistarini','AR',-34.8222,-58.5358],
+ ['GRU','São Paulo','Guarulhos','BR',-23.4356,-46.4731],
+ ['GIG','Río de Janeiro','Galeão','BR',-22.8100,-43.2506],
+].map(a => ({ iata:a[0], city:a[1], name:a[2], cc:a[3], lat:a[4], lon:a[5] }));
+const AP = Object.fromEntries(AIRPORTS.map(a => [a.iata, a]));
+
+const AIRCRAFT = [
+ { id:'phenom',     name:'Embraer Phenom 300E',       short:'Phenom 300E',   speed:839, range:3650,  ceil:45000, cat:'Light jet' },
+ { id:'latitude',   name:'Cessna Citation Latitude',  short:'Citation Latitude', speed:826, range:5000, ceil:45000, cat:'Midsize jet' },
+ { id:'challenger', name:'Bombardier Challenger 350', short:'Challenger 350', speed:870, range:5900,  ceil:45000, cat:'Super midsize' },
+ { id:'falcon',     name:'Dassault Falcon 8X',        short:'Falcon 8X',     speed:900, range:11945, ceil:51000, cat:'Heavy jet' },
+ { id:'g700',       name:'Gulfstream G700',           short:'G700',          speed:956, range:13890, ceil:51000, cat:'Ultra long range' },
+ { id:'global',     name:'Bombardier Global 7500',    short:'Global 7500',   speed:950, range:14260, ceil:51000, cat:'Ultra long range' },
+];
+const ACF = Object.fromEntries(AIRCRAFT.map(a => [a.id, a]));
+
+const NAMES_M = ['Alejandro','Javier','Íñigo','Mikel','Álvaro','Sergio','Daniel','Jorge','Rafael','Unai','Pablo','Marcos','Diego','Hugo','Adrián','Asier','Fernando','Gonzalo','Ignacio','Rodrigo','Aitor','Martín'];
+const NAMES_F = ['Lucía','Carmen','Elena','Irene','Paula','Ane','Nerea','Marta','Sofía','Claudia','Laura','Alba','Leire','Valeria','Cristina','Julia','Noelia','Olivia','Amaia','Inés','Beatriz','Carlota'];
+const SURN = ['García','Fernández','Etxeberria','Aguirre','Navarro','Ortega','Castillo','Ibarra','Ruiz','Romero','Delgado','Zubiaurre','Molina','Herrera','Vidal','Sáez','Prieto','Arrieta','Montero','Salazar','Iglesias','Urquijo','Cortés','Mendoza','Lasarte','Belmonte','Olabarria','Valverde','Quintana','Echevarría'];
+const CATERING = ['jamón ibérico de bellota y pan de cristal','sushi omakase','ostras con champán','tabla de quesos curados','tortilla de patata recién hecha','pintxos donostiarras','caviar Beluga con blinis','fruta tropical cortada','croissants de mantequilla','solomillo con foie','ensalada de burrata','chocolates belgas'];
+const DRINKS = ['un café solo','un cappuccino','zumo de naranja natural','agua con gas y limón','un té matcha','un chocolate caliente','una limonada de la casa','un smoothie de frutos rojos'];
+const SKY = ['Despejado ☀️','Poco nuboso 🌤️','Nubes y claros ⛅','Brisa suave 🌬️','Cielo limpio 🌙'];
+const GATES = ['Pie de avión','Plataforma VIP 3','FBO · Stand 7','Hangar privado 2','Rampa ejecutiva 5'];
+
+const TIERS = [
+ { n:'Silver',   h:0,   c:'#c9ccd3' },
+ { n:'Gold',     h:5,   c:'#d4af6a' },
+ { n:'Platinum', h:20,  c:'#e9e7e1' },
+ { n:'Black',    h:50,  c:'#1a1a1a' },
+ { n:'Infinite', h:100, c:'#9b7bff' },
+];
+const PHASES = [
+ { to:.03, n:'Rodaje',       i:'🛞' },
+ { to:.08, n:'Despegue',     i:'🛫' },
+ { to:.20, n:'Ascenso',      i:'↗️' },
+ { to:.82, n:'Crucero',      i:'✈️' },
+ { to:.95, n:'Descenso',     i:'↘️' },
+ { to:1.01,n:'Aproximación', i:'🛬' },
+];
+
+/* =================== UTILIDADES =================== */
+const $ = id => document.getElementById(id);
+const LS = { get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
+const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const flag = cc => cc === 'BL' ? '🇧🇱' : String.fromCodePoint(...[...cc].map(c => 127397 + c.charCodeAt(0)));
+const fmtN = n => Math.round(n).toLocaleString('es-ES');
+const pad = n => String(n).padStart(2,'0');
+function fmtClock(ms){ ms=Math.max(0,ms); const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`; }
+function fmtHM(min){ min=Math.round(min); const h=Math.floor(min/60), m=min%60; return h ? `${h} h ${pad(m)} min` : `${m} min`; }
+function fmtTime(ts){ const d=new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtDate(ts){ return new Date(ts).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase().replace('.',''); }
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const pick = (r,arr) => arr[Math.floor(r()*arr.length)];
+function distKm(a,b){ const R=6371, toR=Math.PI/180; const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR; const h=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function flightMin(dist,ac){ return Math.max(15, Math.round(dist/(ac.speed*0.92)*60 + 22)); }
+function cruiseFL(dist,ac){ if(dist<400) return 280; if(dist<900) return 370; return Math.min(ac.ceil/100, dist>5000 ? 470 : 430); }
+function bestAircraftFor(dist){ return AIRCRAFT.find(a => a.range >= dist) || AIRCRAFT[AIRCRAFT.length-1]; }
+function person(r,g){ g = g || (r()<.5?'M':'F'); return `${pick(r, g==='M'?NAMES_M:NAMES_F)} ${pick(r,SURN)} ${pick(r,SURN)}`; }
+function greeting(){ const h=new Date().getHours(); return h<6?'Buenas noches':h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches'; }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2800); }
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+
+/* =================== ESTADO =================== */
+const pref = LS.get('vp_pref', { origin:'MAD', dest:null, ac:'g700', study:60 });
+let S = { origin: AP[pref.origin] ? pref.origin : 'MAD', dest: AP[pref.dest] ? pref.dest : null, ac: ACF[pref.ac] ? pref.ac : 'g700', study: pref.study || 60 };
+let flight = LS.get('vp_active', null);
+let log = LS.get('vp_log', []);
+let follow = false;
+const savePref = () => LS.set('vp_pref', { origin:S.origin, dest:S.dest, ac:S.ac, study:S.study });
+const saveFlight = () => flight ? LS.set('vp_active', flight) : LS.del('vp_active');
+const saveLog = () => LS.set('vp_log', log);
+
+/* =================== MAPA =================== */
+let map, airportLayer, routeLayer, planeMarker, flownLine, routeA, routeB;
+const hasLeaflet = typeof L !== 'undefined';
+function initMap(){
+  if(!hasLeaflet){ $('map').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#777">Mapa no disponible sin conexión</div>'; return; }
+  map = L.map('map', { zoomControl:false, worldCopyJump:true, minZoom:2, attributionControl:true }).setView([40,-3], 4);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:12
+  }).addTo(map);
+  L.control.zoom({ position:'bottomright' }).addTo(map);
+  airportLayer = L.layerGroup().addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+  AIRPORTS.forEach(a => {
+    const m = L.circleMarker([a.lat,a.lon], { radius:3.5, color:'#d4af6a', weight:1, fillColor:'#d4af6a', fillOpacity:.55, opacity:.6 });
+    m.bindPopup(`<div style="font-weight:700">${flag(a.cc)} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}</div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>`);
+    airportLayer.addLayer(m);
+  });
+  map.on('dragstart', () => { if(follow){ follow=false; $('bFollow').classList.remove('on'); } });
+}
+function routeLatLngs(o,d){ let dl=d.lon; const diff=dl-o.lon; if(diff>180) dl-=360; else if(diff<-180) dl+=360; return [L.latLng(o.lat,o.lon), L.latLng(d.lat,dl)]; }
+function posAt(p){ const pa=map.project(routeA,0), pb=map.project(routeB,0); return map.unproject(pa.add(pb.subtract(pa).multiplyBy(p)),0); }
+function screenAngle(){ const pa=map.project(routeA,0), pb=map.project(routeB,0); return Math.atan2(pb.y-pa.y,pb.x-pa.x)*180/Math.PI; }
+function apIcon(a,tag){ return L.divIcon({ className:'ap-label', iconSize:[0,0], html:`<div class="ap-pin"></div><div class="ap-tag"><small>${tag}</small><b>${a.iata}</b> · ${a.city}</div>` }); }
+function drawRoute(fit=true){
+  if(!map) return;
+  routeLayer.clearLayers(); planeMarker=null; flownLine=null;
+  const o=AP[S.origin], d=AP[S.dest];
+  if(!o) return;
+  if(!d){ routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')})); if(fit) map.flyTo([o.lat,o.lon],5,{duration:.8}); return; }
+  [routeA, routeB] = routeLatLngs(o,d);
+  routeLayer.addLayer(L.polyline([routeA,routeB], { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
+  flownLine = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:3.5, opacity:1 });
+  routeLayer.addLayer(flownLine);
+  routeLayer.addLayer(L.marker(routeA,{icon:apIcon(o,'Origen')}));
+  routeLayer.addLayer(L.marker(routeB,{icon:apIcon(d,'Destino')}));
+  const ang = screenAngle() + 45; // el emoji ✈️ apunta al noreste
+  planeMarker = L.marker(routeA, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:`<div style="transform:rotate(${ang}deg)">✈️</div>` }) });
+  routeLayer.addLayer(planeMarker);
+  if(fit) fitRoute();
+}
+function fitRoute(){
+  if(!map || !routeA) return;
+  const small = window.innerWidth < 820;
+  const pad = flight && flight.start
+    ? { paddingTopLeft:[40,small?200:140], paddingBottomRight:[40,small?300:230] }
+    : { paddingTopLeft:[small?40:460,110], paddingBottomRight:[60,small?(window.innerHeight*.6):60] };
+  map.fitBounds(L.latLngBounds([routeA,routeB]), { ...pad, maxZoom:7 });
+}
+function updatePlane(p){
+  if(!map || !planeMarker) return;
+  const pos = posAt(p);
+  planeMarker.setLatLng(pos);
+  flownLine.setLatLngs([routeA,pos]);
+  if(follow) map.panTo(pos, { animate:true, duration:.8 });
+}
+
+/* =================== PLANIFICADOR =================== */
+function setupCombo(inp, list, key){
+  let active=-1, items=[];
+  const render = () => {
+    const q = norm(inp.value.trim());
+    items = AIRPORTS.filter(a => !q || norm(`${a.iata} ${a.city} ${a.name} ${COUNTRIES[a.cc]||''}`).includes(q)).slice(0,50);
+    list.innerHTML = items.map((a,i) => `<div class="opt${i===active?' active':''}" data-i="${a.iata}">${flag(a.cc)} <b>${a.iata}</b> <span>${a.city}</span> <small>${a.name}</small></div>`).join('') || '<div class="opt" style="color:var(--muted)">Sin resultados</div>';
+    list.hidden = false;
+  };
+  inp.addEventListener('focus', () => { inp.select(); active=-1; render(); });
+  inp.addEventListener('input', () => { active=0; render(); });
+  inp.addEventListener('keydown', e => {
+    if(list.hidden) return;
+    if(e.key==='ArrowDown'){ active=Math.min(items.length-1,active+1); render(); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ active=Math.max(0,active-1); render(); e.preventDefault(); }
+    else if(e.key==='Enter' && items[Math.max(0,active)]){ pickAirport(key, items[Math.max(0,active)].iata); inp.blur(); }
+    else if(e.key==='Escape') inp.blur();
+  });
+  list.addEventListener('mousedown', e => { const o=e.target.closest('.opt[data-i]'); if(o){ e.preventDefault(); pickAirport(key,o.dataset.i); inp.blur(); } });
+  inp.addEventListener('blur', () => setTimeout(() => { list.hidden=true; syncInputs(); }, 120));
+}
+function syncInputs(){
+  const o=AP[S.origin], d=AP[S.dest];
+  $('inOrigin').value = o ? `${o.iata} · ${o.city}` : '';
+  $('inDest').value = d ? `${d.iata} · ${d.city}` : '';
+}
+window.pickAirport = function(key, iata){
+  if(flight && flight.start) return;
+  if(key==='origin' && iata===S.dest) S.dest=S.origin;
+  if(key==='dest' && iata===S.origin){ toast('El destino debe ser distinto del origen'); return; }
+  S[key]=iata;
+  if(map) map.closePopup();
+  ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute();
+};
+function ensureAircraft(){
+  if(!S.dest) return;
+  const dist = distKm(AP[S.origin],AP[S.dest]);
+  if(ACF[S.ac].range < dist){ const b=bestAircraftFor(dist); S.ac=b.id; toast(`Autonomía insuficiente: asignamos un ${b.short}`); }
+}
+function renderAircraftSelect(){
+  const dist = S.dest ? distKm(AP[S.origin],AP[S.dest]) : 0;
+  $('selAc').innerHTML = AIRCRAFT.map(a => {
+    const ok = a.range >= dist;
+    return `<option value="${a.id}" ${a.id===S.ac?'selected':''} ${ok?'':'disabled'}>${a.name} · ${a.cat} · ${fmtN(a.range)} km${ok?'':' (sin autonomía)'}</option>`;
+  }).join('');
+}
+function renderPlan(){
+  $('greet').innerHTML = `${greeting()}, <em>Comandante Supremo</em>.`;
+  renderAircraftSelect();
+  const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
+  if(!d){
+    $('summary').innerHTML = `<div class="note" style="margin:0">Elija un destino en el buscador, toque un aeropuerto del mapa o pida una sugerencia según su tiempo de estudio.</div>`;
+    $('btnBook').disabled = true;
+  } else {
+    const dist=distKm(o,d), mins=flightMin(dist,ac), fl=cruiseFL(dist,ac);
+    const pomos = Math.floor(mins/30);
+    $('summary').innerHTML = `
+      <div class="sum-route">
+        <div><div class="sum-iata">${o.iata}</div><div class="sum-city">${flag(o.cc)} ${o.city}</div></div>
+        <div class="sum-mid"><span>✈</span></div>
+        <div style="text-align:right"><div class="sum-iata">${d.iata}</div><div class="sum-city">${d.city} ${flag(d.cc)}</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">Distancia</div><div class="v">${fmtN(dist)} km</div></div>
+        <div class="stat"><div class="k">Tiempo vuelo</div><div class="v">${fmtHM(mins)}</div></div>
+        <div class="stat"><div class="k">Crucero</div><div class="v">FL${fl}</div></div>
+      </div>
+      <div class="note">${ac.name} a ${fmtN(ac.speed)} km/h. Llegada estimada a las <b>${fmtTime(Date.now()+mins*60000)}</b> si despega ahora${pomos?` · equivale a <b>${pomos} bloque${pomos>1?'s':''} de 25+5</b>`:''}.</div>`;
+    $('btnBook').disabled = false;
+  }
+  renderSuggestions();
+}
+function renderChips(){
+  const opts=[25,45,60,90,120,180,240];
+  $('chips').innerHTML = opts.map(m => `<button class="chip${S.study===m?' on':''}" data-m="${m}">${m<60?m+' min':(m/60)+' h'}</button>`).join('')
+    + `<input class="chip-inp" id="studyCustom" type="number" min="10" max="1200" placeholder="min" value="${opts.includes(S.study)?'':S.study}">`;
+}
+function renderSuggestions(){
+  const o=AP[S.origin]; $('suggFrom').textContent = `${o.city} (${o.iata})`;
+  const target=S.study;
+  const list = AIRPORTS.filter(a => a.iata!==o.iata).map(a => {
+    const dist=distKm(o,a), ac=ACF[S.ac].range>=dist ? ACF[S.ac] : bestAircraftFor(dist);
+    if(ac.range<dist) return null;
+    return { a, dist, mins: flightMin(dist,ac) };
+  }).filter(Boolean).sort((x,y) => Math.abs(x.mins-target)-Math.abs(y.mins-target)).slice(0,6);
+  $('sugg').innerHTML = list.map(x => `<button class="sugg-item" data-i="${x.a.iata}"><span class="fl">${flag(x.a.cc)}</span><span class="nm">${x.a.city}<small>${x.a.iata} · ${fmtN(x.dist)} km</small></span><span class="tm">${fmtHM(x.mins)}</span></button>`).join('');
+}
+
+/* =================== VUELO =================== */
+function createFlight(){
+  const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
+  const dist=distKm(o,d), mins=flightMin(dist,ac);
+  const r = mulberry32((Date.now() ^ Math.floor(Math.random()*1e9)) >>> 0);
+  const L3 = () => Array.from({length:3},()=>String.fromCharCode(65+Math.floor(r()*26))).join('');
+  const baseT = 27 - Math.abs(d.lat)*0.38;
+  return {
+    id: 'F'+Date.now(),
+    flightNo: 'VP ' + (100+Math.floor(r()*9800)),
+    callsign: 'SUPREMO ' + pad(1+Math.floor(r()*98)),
+    reg: 'EC-' + L3(),
+    from:o.iata, to:d.iata, ac:ac.id, dist, mins, durMs: mins*60000, fl: cruiseFL(dist,ac),
+    crew: { captain: person(r), fo: person(r), fa: person(r,'F') },
+    catering: pick(r,CATERING), drink: pick(r,DRINKS), gate: pick(r,GATES),
+    runway: pad(1+Math.floor(r()*36)) + pick(r,['L','R','C','']),
+    meteo: { t: Math.round(baseT + (r()*8-4)), sky: pick(r,SKY) },
+    booked: Date.now(), start:null, pausedTotal:0, pausedAt:null,
+    said: {}, nextMsg: 0, msgs: [], msgIdx: Math.floor(r()*10),
+  };
+}
+const elapsedMs = f => !f.start ? 0 : ((f.pausedAt || Date.now()) - f.start - f.pausedTotal);
+function tierFor(hours){ let t=TIERS[0]; for(const x of TIERS) if(hours>=x.h) t=x; return t; }
+function totals(){ const min=log.reduce((s,e)=>s+e.studyMin,0); return { flights:log.length, hours:min/60, km:log.reduce((s,e)=>s+(e.km||0),0), dests:new Set(log.filter(e=>e.status==='ok').map(e=>e.to)).size }; }
+
+function barcodeSVG(seed){
+  const r=mulberry32(seed); let x=0, out='';
+  while(x<196){ const w=1+Math.floor(r()*3.2); if(r()>.38) out+=`<rect x="${x}" y="0" width="${w}" height="58" fill="#1d1a14"/>`; x+=w+ (r()>.6?1:0); }
+  return `<svg viewBox="0 0 196 58" preserveAspectRatio="none">${out}</svg>`;
+}
+function hashStr(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+const LOGO_SVG = `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#d4af6a" stroke-width="2"/><path d="M14 36 L50 22 L46 28 L30 34 L26 44 L22 44 L24 35 Z" fill="#f1d9a4"/></svg>`;
+
+function passHTML(f){
+  const o=AP[f.from], d=AP[f.to], ac=ACF[f.ac];
+  const dep = f.start || f.booked, arr = dep + f.durMs;
+  const tier = tierFor(totals().hours);
+  const code = `${f.flightNo.replace(' ','')}${f.from}${f.to}${new Date(dep).getDate()}`;
+  return `<div class="bp" id="bpCard">
+   <div class="bp-main">
+    <div class="bp-head">
+      <div class="bp-brand">${LOGO_SVG}<div><div class="n">VUELO PRIVADO</div><div class="s">PRIVATE AVIATION</div></div></div>
+      <div class="bp-type">TARJETA DE EMBARQUE<b>PRIVATE BOARDING PASS</b></div>
+    </div>
+    <div class="bp-body">
+      <div class="bp-pax">
+        <div><div class="bp-k">Pasajero · Passenger</div><div class="name">${PAX.name}</div><div class="alias">«${PAX.alias}» · CLUB ${tier.n.toUpperCase()}</div></div>
+        <div class="bp-vip">★ ÚNICO PASAJERO</div>
+      </div>
+      <div class="bp-route">
+        <div><div class="bp-k">Desde</div><div class="iata">${o.iata}</div><div class="city">${o.city}, ${COUNTRIES[o.cc]}</div></div>
+        <div class="bp-mid"><div class="ln"><span>✈</span></div><div class="d">${fmtN(f.dist)} km · ${fmtHM(f.mins)}</div></div>
+        <div class="end"><div class="bp-k">Hacia</div><div class="iata">${d.iata}</div><div class="city">${d.city}, ${COUNTRIES[d.cc]}</div></div>
+      </div>
+      <div class="bp-grid">
+        <div><div class="bp-k">Vuelo</div><div class="bp-v mono">${f.flightNo}</div></div>
+        <div><div class="bp-k">Fecha</div><div class="bp-v mono">${fmtDate(dep)}</div></div>
+        <div><div class="bp-k">Salida</div><div class="bp-v mono">${fmtTime(dep)}</div></div>
+        <div><div class="bp-k">Llegada est.</div><div class="bp-v mono">${fmtTime(arr)}</div></div>
+        <div><div class="bp-k">Terminal</div><div class="bp-v">FBO Ejecutivo</div></div>
+        <div><div class="bp-k">Puerta</div><div class="bp-v">${f.gate}</div></div>
+        <div><div class="bp-k">Asiento</div><div class="bp-v">Toda la cabina</div></div>
+        <div><div class="bp-k">Clase</div><div class="bp-v">Privado · VIP</div></div>
+        <div><div class="bp-k">Aeronave</div><div class="bp-v">${ac.short}</div></div>
+        <div><div class="bp-k">Matrícula</div><div class="bp-v mono">${f.reg}</div></div>
+        <div><div class="bp-k">Indicativo</div><div class="bp-v mono">${f.callsign}</div></div>
+        <div><div class="bp-k">Nivel crucero</div><div class="bp-v mono">FL${f.fl}</div></div>
+      </div>
+      <div class="bp-crew">
+        <div><div class="bp-k">Comandante</div><div class="bp-v">${f.crew.captain}</div></div>
+        <div><div class="bp-k">Primer oficial</div><div class="bp-v">${f.crew.fo}</div></div>
+        <div><div class="bp-k">Azafata · TCP</div><div class="bp-v">${f.crew.fa}</div></div>
+      </div>
+      <div class="bp-foot">
+        <div>Catering a bordo: <b>${f.catering}</b></div>
+        <div style="text-align:right">Meteo en ${d.city}*: <b>${f.meteo.t}°C · ${f.meteo.sky}</b></div>
+      </div>
+    </div>
+   </div>
+   <div class="bp-stub">
+     <div class="bp-stub-head">VUELO PRIVADO</div>
+     <div class="bp-stub-body">
+       <div><div class="bp-k">Pasajero</div><div class="bp-v" style="font-size:12.5px">G. CORBACHO MARTÍNEZ</div></div>
+       <div class="r2">${o.iata} → ${d.iata}</div>
+       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+         <div><div class="bp-k">Vuelo</div><div class="bp-v mono">${f.flightNo}</div></div>
+         <div><div class="bp-k">Salida</div><div class="bp-v mono">${fmtTime(dep)}</div></div>
+         <div><div class="bp-k">Asiento</div><div class="bp-v">1A ★</div></div>
+         <div><div class="bp-k">Embarque</div><div class="bp-v">A su ritmo</div></div>
+       </div>
+       <div class="bp-bar">${barcodeSVG(hashStr(code))}<div class="code">${code}</div></div>
+     </div>
+   </div>
+  </div>`;
+}
+
+function openModal(id){ $(id).classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target===m || e.target.hasAttribute('data-close')) { if(m.id!=='mConfirm') closeModal(m.id); } }));
+
+function showPass(f, mode){
+  $('bpHolder').innerHTML = passHTML(f);
+  const acts = $('mPassActions');
+  if(mode==='book'){
+    $('mPassTitle').textContent = 'Tarjeta de embarque emitida';
+    $('mPassSub').textContent = `${f.crew.captain} y su tripulación le esperan a pie de avión.`;
+    acts.innerHTML = `<button class="btn btn-ghost" id="pCancel">Cancelar</button><button class="btn btn-ghost" id="pDl">⬇️ Descargar</button><button class="btn btn-gold" id="pBoard">✈️ Embarcar y despegar</button>`;
+    $('pCancel').onclick = () => { closeModal('mPass'); flight=null; saveFlight(); };
+    $('pBoard').onclick = () => { closeModal('mPass'); board(); };
+  } else {
+    $('mPassTitle').textContent = 'Tarjeta de embarque';
+    $('mPassSub').textContent = `${f.flightNo} · ${AP[f.from].city} → ${AP[f.to].city}`;
+    acts.innerHTML = `<button class="btn btn-ghost" data-close>Cerrar</button><button class="btn btn-gold" id="pDl">⬇️ Descargar</button>`;
+  }
+  $('pDl').onclick = () => downloadPass(f);
+  openModal('mPass');
+}
+async function downloadPass(f){
+  try{
+    if(!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+    const el = $('bpCard');
+    el.style.setProperty('--notch','#f7f2e6');
+    const c = await html2canvas(el, { backgroundColor:null, scale:2, useCORS:true });
+    el.style.removeProperty('--notch');
+    const a = document.createElement('a');
+    a.href = c.toDataURL('image/png'); a.download = `tarjeta-${f.flightNo.replace(' ','')}-${f.from}-${f.to}.png`; a.click();
+    toast('Tarjeta descargada');
+  }catch(e){ toast('No se pudo generar la imagen. Puede hacer captura de pantalla.'); }
+}
+
+/* ---- audio ---- */
+let actx=null, noise=null;
+function audio(){ try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }catch(e){} return actx; }
+function chime(){
+  const c=audio(); if(!c) return;
+  [[659.25,0],[523.25,.55]].forEach(([fq,t0]) => {
+    const o=c.createOscillator(), g=c.createGain(); o.type='sine'; o.frequency.value=fq;
+    g.gain.setValueAtTime(0,c.currentTime+t0); g.gain.linearRampToValueAtTime(.22,c.currentTime+t0+.02); g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+t0+1.6);
+    o.connect(g).connect(c.destination); o.start(c.currentTime+t0); o.stop(c.currentTime+t0+1.7);
+  });
+}
+function setNoise(on, persist=true){
+  const c=audio(); if(!c) return;
+  if(!on){ if(noise){ const n=noise; n.g.gain.setTargetAtTime(0,c.currentTime,.4); setTimeout(()=>{ try{n.src.stop();}catch(e){} },1500); noise=null; } $('bNoise').classList.remove('on'); $('bNoise').textContent='🔈 Ruido de cabina'; if(persist) LS.set('vp_noise',false); return; }
+  if(noise) return;
+  const len=c.sampleRate*6, buf=c.createBuffer(2,len,c.sampleRate);
+  for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch); let last=0; for(let i=0;i<len;i++){ const w=Math.random()*2-1; last=(last+0.02*w)/1.02; d[i]=last*3.2; } }
+  const src=c.createBufferSource(); src.buffer=buf; src.loop=true;
+  const lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=520;
+  const g=c.createGain(); g.gain.value=0; g.gain.setTargetAtTime(.55,c.currentTime,.8);
+  src.connect(lp).connect(g).connect(c.destination); src.start();
+  noise={src,g};
+  $('bNoise').classList.add('on'); $('bNoise').textContent='🔊 Ruido de cabina'; LS.set('vp_noise',true);
+}
+
+/* ---- megafonía ---- */
+function say(who, text, sound=true){
+  if(!flight) return;
+  const roles = { cap:['Comandante',flight.crew.captain], fo:['Primer oficial',flight.crew.fo], fa:['Azafata',flight.crew.fa] };
+  const [role,name] = roles[who];
+  flight.msgs.unshift({ who:`${role} ${name.split(' ')[0]}`, text, t:Date.now() });
+  flight.msgs = flight.msgs.slice(0,6);
+  saveFlight(); renderPA();
+  if(sound) chime();
+}
+function renderPA(){
+  if(!flight) return;
+  $('paList').innerHTML = flight.msgs.slice(0,4).map(m => `<div class="msg"><div class="who">${m.who}<span>${fmtTime(m.t)}</span></div>${m.text}</div>`).join('');
+}
+function phaseIdx(p){ return PHASES.findIndex(x => p < x.to); }
+function announcements(p, el){
+  const f=flight, d=AP[f.to], o=AP[f.from], ac=ACF[f.ac], s=f.said;
+  const once = (k, fn) => { if(!s[k]){ s[k]=1; fn(); } };
+  const pi = phaseIdx(p);
+  if(pi>=0) once('p0', () => say('cap', `Buenas, Comandante Supremo. Le habla ${f.crew.captain}, su comandante. Junto a ${f.crew.fo} y ${f.crew.fa} le damos la bienvenida a bordo de este ${ac.name}. Vuelo ${f.flightNo} a ${d.city}: ${fmtHM(f.mins)} de concentración por delante.`));
+  if(pi>=1) once('p1', () => say('fo', `Torre de ${o.city} nos autoriza a despegar por la pista ${f.runway}. Potencia de despegue… allá vamos.`));
+  if(pi>=2) once('p2', () => say('fa', `Comandante Supremo, en cuanto se apague la señal de cinturones le sirvo ${f.drink}. Ponga el móvil en modo avión, que aquí se viene a estudiar.`));
+  if(pi>=3) once('p3', () => say('cap', `Hemos alcanzado nuestro nivel de crucero, FL${f.fl}. Cielo tranquilo: momento perfecto para concentrarse.`));
+  if(p>=.5) once('half', () => say('cap', `Hemos superado la mitad del trayecto. Lleva ${fmtHM(el/60000)} de estudio; quedan ${fmtHM((f.durMs-el)/60000)}. Excelente ritmo.`));
+  if(pi>=4) once('p4', () => say('cap', `Iniciamos el descenso hacia ${d.city}. En destino ${f.meteo.t}°C, ${f.meteo.sky.toLowerCase()}. Vaya cerrando sus apuntes.`));
+  if(pi>=5) once('p5', () => say('fo', `Tren abajo y blocado. Aproximación final a ${d.iata}, pista a la vista.`));
+  // mensajes periódicos en crucero
+  const every = Math.min(25, Math.max(8, f.mins/6)) * 60000;
+  if(pi===3){
+    if(!f.nextMsg) f.nextMsg = el + every;
+    if(el >= f.nextMsg){
+      f.nextMsg = el + every;
+      const pool = [
+        ['fa', `Le traigo ${f.catering}. Coma algo, el cerebro también necesita combustible.`],
+        ['fa', `¿Más agua, Comandante Supremo? La hidratación también cuenta como estudio.`],
+        ['fo', `Viento de cola favorable. Usted mantenga el rumbo en sus apuntes.`],
+        ['cap', `Todo en orden en cabina de vuelo. Llevamos ${fmtHM(el/60000)} sin perder altitud. Siga así.`],
+        ['fa', `Si necesita estirar las piernas, la cabina es toda suya. Treinta segundos y de vuelta al asiento.`],
+        ['fo', `Contacto con control de tránsito aéreo: ruta directa autorizada. Ni una distracción en el radar.`],
+        ['fa', `Le he dejado ${pick(Math.random,DRINKS)} en la mesa auxiliar. Va de maravilla.`],
+        ['cap', `Recuerde: cada minuto de vuelo es un minuto de estudio. Nos quedan ${fmtHM((f.durMs-el)/60000)}.`],
+      ];
+      const [w,t] = pool[(f.msgIdx++) % pool.length];
+      say(w,t);
+    }
+  }
+  saveFlight();
+}
+
+/* ---- ciclo de vuelo ---- */
+let wakeLock=null;
+async function keepAwake(){ try{ if('wakeLock' in navigator && flight && flight.start && !flight.pausedAt) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible') keepAwake(); });
+
+function book(){
+  if(!S.dest) return;
+  flight = createFlight(); saveFlight();
+  showPass(flight,'book');
+}
+function board(){
+  if(!flight) return;
+  flight.start = Date.now(); flight.pausedTotal=0; flight.pausedAt=null; flight.said={}; flight.msgs=[]; flight.nextMsg=0;
+  saveFlight();
+  audio();
+  if(LS.get('vp_noise',false)) setNoise(true);
+  try{ if('Notification' in window && Notification.permission==='default') Notification.requestPermission(); }catch(e){}
+  enterFlightMode();
+}
+function enterFlightMode(){
+  S.origin=flight.from; S.dest=flight.to; S.ac=flight.ac;
+  document.body.classList.add('flying');
+  if(map) map.removeLayer(airportLayer);
+  const o=AP[flight.from], d=AP[flight.to], ac=ACF[flight.ac];
+  $('hRoute').textContent = `${o.iata} ✈ ${d.iata}`;
+  $('hCities').textContent = `${o.city} → ${d.city}`;
+  $('pFrom').textContent = `${o.iata} · ${fmtTime(flight.start)}`;
+  $('crewline').innerHTML = `${ac.name} <b>${flight.reg}</b> · Cmdte. <b>${flight.crew.captain}</b> · 1.er Of. <b>${flight.crew.fo}</b> · TCP <b>${flight.crew.fa}</b>`;
+  drawRoute(false); fitRoute(); renderPA(); keepAwake(); tick(true);
+}
+function exitFlightMode(){
+  document.body.classList.remove('flying');
+  if(map && !map.hasLayer(airportLayer)) airportLayer.addTo(map);
+  follow=false; $('bFollow').classList.remove('on');
+  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock=null; }
+  setNoise(false, false);
+  document.title = 'Vuelo Privado · Temporizador de estudio';
+}
+function togglePause(){
+  if(!flight || !flight.start) return;
+  if(flight.pausedAt){ flight.pausedTotal += Date.now()-flight.pausedAt; flight.pausedAt=null; say('cap','Salimos del circuito de espera. Reanudamos la ruta, Comandante Supremo.'); keepAwake(); }
+  else { flight.pausedAt = Date.now(); say('cap','Control nos pone en circuito de espera. Tómese un respiro; reanudamos cuando usted diga.'); }
+  saveFlight(); tick(true);
+}
+function addLog(status){
+  const f=flight, el=elapsedMs(f), p=Math.min(1,el/f.durMs);
+  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*p), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:{...f, msgs:[], said:{}} };
+  log.unshift(entry); saveLog(); updateTier();
+  return entry;
+}
+function land(){
+  const f=flight; const tierBefore = tierFor(totals().hours).n;
+  say('cap', `Bienvenido a ${AP[f.to].city}, Comandante Supremo. Ha sido un honor volar con usted.`);
+  const e = addLog('ok');
+  const tierNow = tierFor(totals().hours);
+  try{ if('Notification' in window && Notification.permission==='granted') new Notification('🛬 Aterrizaje en ' + AP[f.to].city, { body:`Vuelo ${f.flightNo} completado: ${fmtHM(e.studyMin)} de estudio.`, icon:'icon.svg' }); }catch(err){}
+  $('landTitle').textContent = `Bienvenido a ${AP[f.to].city}`;
+  $('landSub').innerHTML = `Vuelo ${f.flightNo} completado, Comandante Supremo.${tierBefore!==tierNow.n?` <br><b style="color:var(--gold2)">¡Ascenso al Club ${tierNow.n}!</b>`:''}`;
+  const t=totals();
+  $('landStats').innerHTML = [
+    ['Tiempo estudiado', fmtHM(e.studyMin)], ['Distancia', fmtN(f.dist)+' km'], ['Aeronave', ACF[f.ac].short],
+    ['Total horas', t.hours.toFixed(1)+' h'], ['Total vuelos', t.flights], ['Club', tierNow.n],
+  ].map(([k,v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  $('landNext').textContent = `✈️ Nuevo vuelo desde ${AP[f.to].city}`;
+  flight=null; saveFlight();
+  S.origin=e.to; S.dest=null; savePref();
+  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
+  openModal('mLand');
+}
+async function abort(){
+  const ok = await confirmBox('¿Desviar el vuelo?', 'El tiempo estudiado hasta ahora se guardará en su bitácora como vuelo desviado.', 'Desviar');
+  if(!ok) return;
+  const f=flight; addLog('ko');
+  flight=null; saveFlight();
+  S.origin=f.from; S.dest=f.to;
+  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
+  toast('Vuelo desviado. Registrado en la bitácora.');
+}
+function profile(p){
+  const ac=ACF[flight.ac], cr=flight.fl*100, v=ac.speed;
+  if(p<.03) return { alt:0, spd:20+p/.03*20 };
+  if(p<.08){ const t=(p-.03)/.05; return { alt:t*3000, spd:160+t*190 }; }
+  if(p<.20){ const t=(p-.08)/.12; return { alt:3000+t*(cr-3000), spd:350+t*(v-350) }; }
+  if(p<.82) return { alt:cr, spd:v + Math.sin(Date.now()/9000)*6 };
+  if(p<.95){ const t=(p-.82)/.13; return { alt:cr-t*(cr-5000), spd:v-t*(v-420) }; }
+  if(p<1){ const t=(p-.95)/.05; return { alt:5000*(1-t), spd:420-t*190 }; }
+  return { alt:0, spd:0 };
+}
+let lastMapUpd=0;
+function tick(force){
+  if(!flight || !flight.start) return;
+  const el=elapsedMs(flight), p=Math.min(1, el/flight.durMs), rem=flight.durMs-el;
+  if(p>=1){ land(); return; }
+  const paused=!!flight.pausedAt, pi=phaseIdx(p), ph=PHASES[pi]||PHASES[PHASES.length-1], pr=profile(p);
+  $('hTimer').textContent = fmtClock(rem);
+  $('hTimerLbl').textContent = paused ? 'En espera · pausado' : 'Tiempo restante';
+  $('hEl').textContent = fmtClock(el);
+  $('hAlt').textContent = paused && p>.08 && p<.95 ? 'Holding' : fmtN(pr.alt)+' ft';
+  $('hSpd').textContent = fmtN(pr.spd)+' km/h';
+  $('hKm').textContent = fmtN(flight.dist*(1-p))+' km';
+  $('hPct').textContent = (p*100).toFixed(1)+'%';
+  $('hEta').textContent = fmtTime(Date.now()+rem);
+  $('pTo').textContent = `${AP[flight.to].iata} · ${fmtTime(Date.now()+rem)}`;
+  $('pFill').style.width = (p*100)+'%';
+  $('pPlane').style.left = (p*100)+'%';
+  $('phase').classList.toggle('paused',paused);
+  $('phaseTxt').textContent = paused ? '⏸ Circuito de espera' : `${ph.i} ${ph.n}`;
+  $('phaseFn').textContent = `${flight.flightNo} · ${flight.callsign}`;
+  $('bPause').textContent = paused ? '▶️ Reanudar' : '⏸ Pausar';
+  document.title = `${paused?'⏸':'✈️'} ${fmtClock(rem)} · ${flight.from}→${flight.to}`;
+  if(force || Date.now()-lastMapUpd>1000){ lastMapUpd=Date.now(); updatePlane(p); }
+  if(!paused) announcements(p, el);
+}
+setInterval(tick, 250);
+
+/* ---- confirm ---- */
+function confirmBox(title,text,okLbl='Aceptar'){
+  return new Promise(res => {
+    $('cfTitle').textContent=title; $('cfText').textContent=text; $('cfYes').textContent=okLbl;
+    const done=v=>{ closeModal('mConfirm'); $('cfYes').onclick=$('cfNo').onclick=null; res(v); };
+    $('cfYes').onclick=()=>done(true); $('cfNo').onclick=()=>done(false);
+    openModal('mConfirm');
+  });
+}
+
+/* ---- bitácora ---- */
+function updateTier(){ const t=tierFor(totals().hours); $('tierName').textContent='Club '+t.n; $('tierDot').style.background=t.c; }
+function renderLog(){
+  const t=totals();
+  $('lbStats').innerHTML = [[t.flights,'Vuelos'],[t.hours.toFixed(1),'Horas de estudio'],[fmtN(t.km),'Kilómetros'],[t.dests,'Destinos']].map(([v,k]) => `<div class="lb-stat"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+  const cur=tierFor(t.hours), idx=TIERS.indexOf(cur), next=TIERS[idx+1];
+  const pct = next ? Math.min(100,(t.hours-cur.h)/(next.h-cur.h)*100) : 100;
+  $('tierCard').innerHTML = `<div class="tier-row"><div>Club Vuelo Privado<br><b>${cur.n}</b></div><div style="text-align:right;color:var(--muted)">${next?`Faltan <b style="font-size:16px">${(next.h-t.hours).toFixed(1)} h</b><br>para ${next.n}`:'Nivel máximo alcanzado'}</div></div><div class="tier-bar"><div style="width:${pct}%"></div></div>`;
+  $('lbList').innerHTML = log.length ? log.map((e,i) => `<button class="lb-item" data-i="${i}">
+      <span class="rt">${e.from} → ${e.to}</span>
+      <span class="meta"><b>${AP[e.from]?.city||e.from} → ${AP[e.to]?.city||e.to}</b><br>${e.flightNo} · ${fmtDate(e.date)} · ${fmtTime(e.date)}</span>
+      <span class="meta hide-m" style="text-align:right"><b>${fmtHM(e.studyMin)}</b><br>${fmtN(e.km)} km</span>
+      <span class="st ${e.status==='ok'?'ok':'ko'}">${e.status==='ok'?'Completado':'Desviado'}</span></button>`).join('')
+    : `<div class="empty">Aún no hay vuelos registrados.<br>Su primer despegue le espera, Comandante Supremo.</div>`;
+  $('lbClear').style.display = log.length ? '' : 'none';
+}
+
+/* =================== EVENTOS =================== */
+setupCombo($('inOrigin'), $('lsOrigin'), 'origin');
+setupCombo($('inDest'), $('lsDest'), 'dest');
+$('btnSwap').onclick = () => { if(!S.dest) return; [S.origin,S.dest]=[S.dest,S.origin]; savePref(); syncInputs(); renderPlan(); drawRoute(); };
+$('selAc').onchange = e => { S.ac=e.target.value; savePref(); renderPlan(); };
+$('btnBook').onclick = book;
+$('btnRandom').onclick = () => {
+  const o=AP[S.origin];
+  const c = AIRPORTS.filter(a => a.iata!==o.iata).map(a => ({a, m:flightMin(distKm(o,a), bestAircraftFor(distKm(o,a)))})).filter(x => Math.abs(x.m-S.study) <= Math.max(20, S.study*.35));
+  const pool = c.length ? c : AIRPORTS.filter(a=>a.iata!==o.iata).map(a=>({a}));
+  const x = pool[Math.floor(Math.random()*pool.length)];
+  S.dest = x.a.iata; S.ac = (ACF[S.ac].range >= distKm(o,x.a)) ? S.ac : bestAircraftFor(distKm(o,x.a)).id;
+  savePref(); syncInputs(); renderPlan(); drawRoute(); toast(`Destino sorpresa: ${x.a.city} ${flag(x.a.cc)}`);
+};
+$('chips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.study=+c.dataset.m; savePref(); renderChips(); renderSuggestions(); });
+$('chips').addEventListener('change', e => { if(e.target.id==='studyCustom'){ const v=Math.max(10,Math.min(1200,+e.target.value||60)); S.study=v; savePref(); renderChips(); renderSuggestions(); } });
+$('sugg').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(!b) return; const d=AP[b.dataset.i]; const dist=distKm(AP[S.origin],d); if(ACF[S.ac].range<dist) S.ac=bestAircraftFor(dist).id; S.dest=d.iata; savePref(); syncInputs(); renderPlan(); drawRoute(); });
+$('bPause').onclick = togglePause;
+$('bNoise').onclick = () => setNoise(!noise);
+$('bFollow').onclick = () => { follow=!follow; $('bFollow').classList.toggle('on',follow); if(follow){ map && map.setZoom(Math.max(map.getZoom(),6)); tick(true); } else fitRoute(); };
+$('bPass').onclick = () => flight && showPass(flight,'view');
+$('bFull').onclick = () => { try{ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }catch(e){} };
+$('bAbort').onclick = abort;
+$('paHead').onclick = () => { $('pa').classList.toggle('collapsed'); $('paToggle').textContent = $('pa').classList.contains('collapsed') ? '+' : '–'; };
+$('btnLog').onclick = $('btnClub').onclick = () => { renderLog(); openModal('mLog'); };
+$('lbList').addEventListener('click', e => { const b=e.target.closest('.lb-item'); if(!b) return; const en=log[+b.dataset.i]; showPass(en.f,'view'); });
+$('lbClear').onclick = async () => { closeModal('mLog'); if(await confirmBox('¿Borrar la bitácora?','Se eliminarán todos los vuelos y horas registradas. No se puede deshacer.','Borrar')){ log=[]; saveLog(); updateTier(); toast('Bitácora borrada'); } };
+$('landNext').onclick = () => { closeModal('mLand'); $('inDest').focus(); };
+$('landLog').onclick = () => { closeModal('mLand'); renderLog(); openModal('mLog'); };
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape') document.querySelectorAll('.modal.open').forEach(m => { if(m.id!=='mConfirm') closeModal(m.id); });
+  if(e.code==='Space' && flight && flight.start && !document.querySelector('.modal.open') && document.activeElement.tagName!=='INPUT'){ e.preventDefault(); togglePause(); }
+});
+window.addEventListener('resize', () => { if(routeA && !follow) fitRoute(); });
+
+/* =================== INICIO =================== */
+initMap();
+updateTier();
+renderChips();
+syncInputs();
+if(flight && flight.start){
+  enterFlightMode();
+  toast('Vuelo en curso recuperado');
+} else {
+  if(flight && !flight.start){ flight=null; saveFlight(); }
+  renderPlan(); drawRoute();
+}
+</script>
+</body>
+</html>
