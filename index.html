@@ -590,8 +590,11 @@ const hasLeaflet = typeof L !== 'undefined';
 function initMap(){
   if(!hasLeaflet){ $('map').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#777">Mapa no disponible sin conexión</div>'; return; }
   map = L.map('map', { zoomControl:false, worldCopyJump:true, minZoom:2, attributionControl:true }).setView([40,-3], 4);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:12
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'Tiles &copy; Esri', maxZoom:12
+  }).addTo(map);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom:12, opacity:.75
   }).addTo(map);
   L.control.zoom({ position:'bottomright' }).addTo(map);
   airportLayer = L.layerGroup().addTo(map);
