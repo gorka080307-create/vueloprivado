@@ -21,4 +21,4 @@ Atajo: `Espacio` pausa o reanuda el vuelo.
 
 ## Publicación
 
-Es un sitio estático (`index.html`). Se publica con GitHub Pages desde la rama `main`, carpeta raíz.
+Es un sitio estático (`index.html`, `app.js`, `data.js`, `sw.js`). Se publica con GitHub Pages desde la rama `main`, carpeta raíz.

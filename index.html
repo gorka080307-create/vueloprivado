@@ -238,6 +238,27 @@ body.flying #pa{display:block}
 .toast{position:fixed;z-index:200;left:50%;top:20px;transform:translate(-50%,-220%);padding:12px 18px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);font-size:13.5px;font-weight:600;transition:transform .35s ease;max-width:90%}
 .toast.show{transform:translate(-50%,0)}
 
+
+.ap-pin.mil{background:#9fcf6a;box-shadow:0 0 0 2px #9fcf6a,0 0 18px rgba(159,207,106,.8)}
+.ap-pin.hp{background:#6fd3e0;box-shadow:0 0 0 2px #6fd3e0,0 0 18px rgba(111,211,224,.8)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--muted);margin-top:12px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-weight:800}
+.bp-mil .bp-head{background:linear-gradient(135deg,#1b1f12,#2b3220)}
+.bp-mil .bp-stub-head{background:linear-gradient(135deg,#1b1f12,#2b3220)}
+.bp-unit{font-size:11px;font-weight:700;color:#4b5a2a;background:#e6e7d0;border-radius:8px;padding:7px 10px;margin:2px 0 6px;letter-spacing:.02em}
+#hud.on-break .hud-timer .t{color:#9fdcff;text-shadow:0 0 30px rgba(159,220,255,.35)}
+.pp-stamps{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px;padding:18px;border-radius:16px;background:repeating-linear-gradient(0deg,#efe6d2 0 28px,#ebe1cb 28px 29px);margin-top:4px}
+.stamp{color:var(--ink);border:3px double var(--ink);padding:12px 8px;text-align:center;opacity:.88;mix-blend-mode:multiply;font-family:var(--mono)}
+.stamp.round{border-radius:50%;aspect-ratio:1;display:flex;flex-direction:column;justify-content:center}
+.stamp.rect{border-radius:10px}
+.st-flag{font-size:30px;filter:saturate(.7)}
+.st-name{font-weight:700;font-size:12px;letter-spacing:.12em;margin-top:4px}
+.st-date{font-size:10.5px;margin-top:3px}
+.st-n{font-size:9.5px;opacity:.8;margin-top:2px}
+.pp-cover{display:flex;align-items:center;gap:14px;justify-content:center;margin-bottom:14px;color:var(--gold2)}
+.pp-cover .crest{font-size:40px}
+
 @media (max-width:420px){ #tierName{display:none} }
 @media (max-width:820px){
   .topbar{padding:10px 14px}
@@ -282,6 +303,7 @@ body.flying #pa{display:block}
   </div>
   <div class="top-actions">
     <button class="pill" id="btnClub" title="Club Vuelo Privado"><span class="tier-dot" id="tierDot"></span><span id="tierName">Silver</span></button>
+    <button class="pill" id="btnPassport">🛂 <span class="lbl">Pasaporte</span></button>
     <button class="pill" id="btnLog">📖 <span class="lbl">Bitácora</span></button>
   </div>
 </header>
@@ -320,6 +342,16 @@ body.flying #pa{display:block}
   <div class="chips" id="chips"></div>
   <div class="sugg" id="sugg"></div>
   <div class="note">Le proponemos destinos desde <b id="suggFrom">—</b> cuyo tiempo de vuelo se ajusta a su sesión de estudio.</div>
+
+  <div class="sep"></div>
+  <div class="h-sec">Descansos programados</div>
+  <div class="chips" id="breakChips"></div>
+  <div class="note">Durante el vuelo la azafata le avisará para descansar. El descanso no cuenta como tiempo de estudio y el vuelo se reanuda solo.</div>
+  <div class="legend">
+    <span><i style="background:#d4af6a"></i>Aeropuerto</span><span><i style="background:#e9d7a8"></i>Aeródromo</span>
+    <span><i style="background:#6fd3e0"></i>Helipuerto</span><span><i style="background:#9fcf6a"></i>Base militar</span>
+    <span>🌓 Zona de noche en tiempo real</span>
+  </div>
 </aside>
 
 <!-- FLIGHT HUD -->
@@ -372,7 +404,7 @@ body.flying #pa{display:block}
   <div class="land-stats" id="landStats"></div>
   <div class="modal-actions">
     <button class="btn btn-gold" id="landNext">✈️ Nuevo vuelo</button>
-    <button class="btn btn-ghost" id="landLog">📖 Ver bitácora</button>
+    <button class="btn btn-ghost" id="landLog">🛂 Ver pasaporte</button>
   </div>
 </div></div>
 
@@ -384,8 +416,19 @@ body.flying #pa{display:block}
   <div class="lb-list" id="lbList"></div>
   <div class="modal-actions">
     <button class="btn btn-ghost" data-close>Cerrar</button>
+    <button class="btn btn-ghost" id="lbExport">⬇️ Exportar copia</button>
+    <button class="btn btn-ghost" id="lbImport">⬆️ Importar copia</button>
     <button class="btn btn-danger" id="lbClear">Borrar bitácora</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
   </div>
+</div></div>
+
+<div class="modal" id="mPassport"><div class="modal-box panel" style="max-width:780px">
+  <div class="pp-cover"><span class="crest">🛂</span><div><div class="modal-title" style="margin:0;text-align:left">Pasaporte</div><div style="font-size:11px;letter-spacing:.24em;color:var(--muted)">GORKA CORBACHO MARTÍNEZ · «COMANDANTE SUPREMO»</div></div></div>
+  <div class="lb-stats" id="ppStats"></div>
+  <div class="pp-stamps" id="ppStamps"></div>
+  <div id="ppBases"></div>
+  <div class="modal-actions"><button class="btn btn-ghost" data-close>Cerrar</button></div>
 </div></div>
 
 <div class="modal" id="mConfirm"><div class="modal-box panel" style="max-width:440px;text-align:center">
@@ -396,797 +439,7 @@ body.flying #pa{display:block}
 
 <div class="toast" id="toast"></div>
 
-<script>
-'use strict';
-/* =================== DATOS =================== */
-const PAX = { name: 'GORKA CORBACHO MARTÍNEZ', alias: 'COMANDANTE SUPREMO' };
-
-const COUNTRIES = {ES:'España',PT:'Portugal',FR:'Francia',CH:'Suiza',GB:'Reino Unido',IE:'Irlanda',NL:'Países Bajos',BE:'Bélgica',DE:'Alemania',AT:'Austria',CZ:'Chequia',DK:'Dinamarca',SE:'Suecia',NO:'Noruega',FI:'Finlandia',IS:'Islandia',PL:'Polonia',HU:'Hungría',GR:'Grecia',IT:'Italia',MT:'Malta',MC:'Mónaco',TR:'Turquía',MA:'Marruecos',EG:'Egipto',AE:'Emiratos Árabes',QA:'Catar',SA:'Arabia Saudí',MV:'Maldivas',SC:'Seychelles',MU:'Mauricio',ZA:'Sudáfrica',KE:'Kenia',TZ:'Tanzania',IN:'India',SG:'Singapur',HK:'Hong Kong',TH:'Tailandia',ID:'Indonesia',JP:'Japón',KR:'Corea del Sur',CN:'China',AU:'Australia',NZ:'Nueva Zelanda',US:'Estados Unidos',CA:'Canadá',MX:'México',BL:'San Bartolomé',DO:'Rep. Dominicana',CU:'Cuba',BS:'Bahamas',CO:'Colombia',PE:'Perú',CL:'Chile',AR:'Argentina',BR:'Brasil'};
-
-const AIRPORTS = [
- ['MAD','Madrid','Adolfo Suárez Madrid-Barajas','ES',40.4983,-3.5676],
- ['BCN','Barcelona','Josep Tarradellas El Prat','ES',41.2974,2.0833],
- ['BIO','Bilbao','Aeropuerto de Bilbao','ES',43.3011,-2.9106],
- ['EAS','San Sebastián','Aeropuerto de San Sebastián','ES',43.3565,-1.7906],
- ['VIT','Vitoria','Aeropuerto de Vitoria','ES',42.8828,-2.7244],
- ['PNA','Pamplona','Aeropuerto de Pamplona','ES',42.7700,-1.6463],
- ['SDR','Santander','Seve Ballesteros','ES',43.4271,-3.8200],
- ['OVD','Asturias','Aeropuerto de Asturias','ES',43.5636,-6.0346],
- ['SCQ','Santiago','Rosalía de Castro','ES',42.8963,-8.4151],
- ['ZAZ','Zaragoza','Aeropuerto de Zaragoza','ES',41.6662,-1.0416],
- ['VLC','Valencia','Aeropuerto de Valencia','ES',39.4893,-0.4816],
- ['ALC','Alicante','Miguel Hernández','ES',38.2822,-0.5582],
- ['SVQ','Sevilla','San Pablo','ES',37.4180,-5.8931],
- ['AGP','Málaga · Marbella','Costa del Sol','ES',36.6749,-4.4991],
- ['PMI','Palma de Mallorca','Son Sant Joan','ES',39.5517,2.7388],
- ['IBZ','Ibiza','Aeropuerto de Ibiza','ES',38.8729,1.3731],
- ['MAH','Menorca','Aeropuerto de Menorca','ES',39.8626,4.2186],
- ['LPA','Gran Canaria','Aeropuerto de Gran Canaria','ES',27.9319,-15.3866],
- ['TFS','Tenerife','Tenerife Sur','ES',28.0445,-16.5725],
- ['ACE','Lanzarote','César Manrique','ES',28.9455,-13.6052],
- ['LIS','Lisboa','Humberto Delgado','PT',38.7742,-9.1342],
- ['OPO','Oporto','Francisco Sá Carneiro','PT',41.2481,-8.6814],
- ['FAO','Faro · Algarve','Aeropuerto de Faro','PT',37.0144,-7.9659],
- ['LBG','París','Le Bourget (aviación ejecutiva)','FR',48.9694,2.4414],
- ['NCE','Niza · Mónaco','Côte d\'Azur','FR',43.6584,7.2159],
- ['LTT','Saint-Tropez','La Môle','FR',43.2054,6.4820],
- ['CVF','Courchevel','Altiport de Courchevel','FR',45.3967,6.6347],
- ['BIQ','Biarritz','Pays Basque','FR',43.4684,-1.5311],
- ['GVA','Ginebra','Aeropuerto de Ginebra','CH',46.2381,6.1090],
- ['ZRH','Zúrich','Aeropuerto de Zúrich','CH',47.4647,8.5492],
- ['SMV','St. Moritz','Engadin Samedan','CH',46.5340,9.8840],
- ['FAB','Londres','Farnborough (aviación ejecutiva)','GB',51.2758,-0.7763],
- ['LCY','Londres City','London City','GB',51.5053,0.0553],
- ['EDI','Edimburgo','Aeropuerto de Edimburgo','GB',55.9500,-3.3725],
- ['DUB','Dublín','Aeropuerto de Dublín','IE',53.4213,-6.2701],
- ['AMS','Ámsterdam','Schiphol','NL',52.3105,4.7683],
- ['BRU','Bruselas','Zaventem','BE',50.9010,4.4844],
- ['FRA','Fráncfort','Frankfurt am Main','DE',50.0379,8.5622],
- ['MUC','Múnich','Franz Josef Strauss','DE',48.3538,11.7861],
- ['BER','Berlín','Brandenburg','DE',52.3667,13.5033],
- ['VIE','Viena','Schwechat','AT',48.1103,16.5697],
- ['SZG','Salzburgo','W. A. Mozart','AT',47.7933,13.0043],
- ['PRG','Praga','Václav Havel','CZ',50.1008,14.2600],
- ['CPH','Copenhague','Kastrup','DK',55.6180,12.6561],
- ['ARN','Estocolmo','Arlanda','SE',59.6519,17.9186],
- ['OSL','Oslo','Gardermoen','NO',60.1939,11.1004],
- ['HEL','Helsinki','Helsinki-Vantaa','FI',60.3172,24.9633],
- ['RVN','Laponia','Rovaniemi','FI',66.5648,25.8304],
- ['KEF','Reikiavik','Keflavík','IS',63.9850,-22.6056],
- ['WAW','Varsovia','Chopin','PL',52.1657,20.9671],
- ['BUD','Budapest','Liszt Ferenc','HU',47.4298,19.2611],
- ['ATH','Atenas','Eleftherios Venizelos','GR',37.9364,23.9445],
- ['JMK','Mykonos','Aeropuerto de Mykonos','GR',37.4351,25.3481],
- ['JTR','Santorini','Aeropuerto de Santorini','GR',36.3992,25.4793],
- ['CIA','Roma','Ciampino (aviación ejecutiva)','IT',41.7994,12.5949],
- ['LIN','Milán','Linate','IT',45.4451,9.2767],
- ['VCE','Venecia','Marco Polo','IT',45.5053,12.3519],
- ['FLR','Florencia','Peretola','IT',43.8100,11.2051],
- ['NAP','Nápoles · Capri','Capodichino','IT',40.8860,14.2908],
- ['OLB','Cerdeña · Costa Esmeralda','Olbia','IT',40.8987,9.5176],
- ['MLA','Malta','Aeropuerto de Malta','MT',35.8575,14.4775],
- ['IST','Estambul','Aeropuerto de Estambul','TR',41.2753,28.7519],
- ['RAK','Marrakech','Menara','MA',31.6069,-8.0363],
- ['CAI','El Cairo','Aeropuerto de El Cairo','EG',30.1219,31.4056],
- ['DXB','Dubái','Dubai International','AE',25.2532,55.3657],
- ['AUH','Abu Dabi','Zayed International','AE',24.4330,54.6511],
- ['DOH','Doha','Hamad International','QA',25.2731,51.6081],
- ['RUH','Riad','King Khalid','SA',24.9576,46.6988],
- ['MLE','Maldivas','Velana (Malé)','MV',4.1918,73.5291],
- ['SEZ','Seychelles','Mahé','SC',-4.6743,55.5218],
- ['MRU','Mauricio','Sir Seewoosagur Ramgoolam','MU',-20.4302,57.6836],
- ['ZNZ','Zanzíbar','Abeid Amani Karume','TZ',-6.2220,39.2249],
- ['NBO','Nairobi','Jomo Kenyatta','KE',-1.3192,36.9278],
- ['CPT','Ciudad del Cabo','Cape Town International','ZA',-33.9715,18.6021],
- ['BOM','Bombay','Chhatrapati Shivaji','IN',19.0896,72.8656],
- ['DEL','Nueva Delhi','Indira Gandhi','IN',28.5562,77.1000],
- ['BKK','Bangkok','Suvarnabhumi','TH',13.6900,100.7501],
- ['HKT','Phuket','Aeropuerto de Phuket','TH',8.1132,98.3169],
- ['SIN','Singapur','Changi','SG',1.3644,103.9915],
- ['DPS','Bali','Ngurah Rai','ID',-8.7482,115.1675],
- ['HKG','Hong Kong','Chek Lap Kok','HK',22.3080,113.9185],
- ['PEK','Pekín','Capital International','CN',40.0799,116.6031],
- ['ICN','Seúl','Incheon','KR',37.4602,126.4407],
- ['HND','Tokio','Haneda','JP',35.5494,139.7798],
- ['SYD','Sídney','Kingsford Smith','AU',-33.9399,151.1753],
- ['MEL','Melbourne','Tullamarine','AU',-37.6690,144.8410],
- ['AKL','Auckland','Aeropuerto de Auckland','NZ',-37.0082,174.7850],
- ['TEB','Nueva York','Teterboro (aviación ejecutiva)','US',40.8501,-74.0608],
- ['BOS','Boston','Logan','US',42.3656,-71.0096],
- ['DCA','Washington D. C.','Reagan National','US',38.8512,-77.0402],
- ['MIA','Miami','Miami International','US',25.7959,-80.2870],
- ['ORD','Chicago','O\'Hare','US',41.9742,-87.9073],
- ['ASE','Aspen','Aspen/Pitkin County','US',39.2232,-106.8688],
- ['LAS','Las Vegas','Harry Reid','US',36.0840,-115.1537],
- ['VNY','Los Ángeles','Van Nuys (aviación ejecutiva)','US',34.2098,-118.4900],
- ['SFO','San Francisco','San Francisco International','US',37.6213,-122.3790],
- ['HNL','Honolulu','Daniel K. Inouye','US',21.3187,-157.9225],
- ['YYZ','Toronto','Pearson','CA',43.6777,-79.6248],
- ['YUL','Montreal','Trudeau','CA',45.4706,-73.7408],
- ['MEX','Ciudad de México','Benito Juárez','MX',19.4363,-99.0721],
- ['CUN','Cancún','Aeropuerto de Cancún','MX',21.0365,-86.8771],
- ['SJD','Los Cabos','Aeropuerto de Los Cabos','MX',23.1518,-109.7210],
- ['SBH','San Bartolomé','Gustaf III','BL',17.9044,-62.8436],
- ['NAS','Nassau','Lynden Pindling','BS',25.0390,-77.4662],
- ['PUJ','Punta Cana','Aeropuerto de Punta Cana','DO',18.5674,-68.3634],
- ['HAV','La Habana','José Martí','CU',22.9892,-82.4091],
- ['CTG','Cartagena de Indias','Rafael Núñez','CO',10.4424,-75.5130],
- ['BOG','Bogotá','El Dorado','CO',4.7016,-74.1469],
- ['LIM','Lima','Jorge Chávez','PE',-12.0219,-77.1143],
- ['SCL','Santiago de Chile','Arturo Merino Benítez','CL',-33.3930,-70.7858],
- ['EZE','Buenos Aires','Ministro Pistarini','AR',-34.8222,-58.5358],
- ['GRU','São Paulo','Guarulhos','BR',-23.4356,-46.4731],
- ['GIG','Río de Janeiro','Galeão','BR',-22.8100,-43.2506],
-].map(a => ({ iata:a[0], city:a[1], name:a[2], cc:a[3], lat:a[4], lon:a[5] }));
-const AP = Object.fromEntries(AIRPORTS.map(a => [a.iata, a]));
-
-const AIRCRAFT = [
- { id:'phenom',     name:'Embraer Phenom 300E',       short:'Phenom 300E',   speed:839, range:3650,  ceil:45000, cat:'Light jet' },
- { id:'latitude',   name:'Cessna Citation Latitude',  short:'Citation Latitude', speed:826, range:5000, ceil:45000, cat:'Midsize jet' },
- { id:'challenger', name:'Bombardier Challenger 350', short:'Challenger 350', speed:870, range:5900,  ceil:45000, cat:'Super midsize' },
- { id:'falcon',     name:'Dassault Falcon 8X',        short:'Falcon 8X',     speed:900, range:11945, ceil:51000, cat:'Heavy jet' },
- { id:'g700',       name:'Gulfstream G700',           short:'G700',          speed:956, range:13890, ceil:51000, cat:'Ultra long range' },
- { id:'global',     name:'Bombardier Global 7500',    short:'Global 7500',   speed:950, range:14260, ceil:51000, cat:'Ultra long range' },
-];
-const ACF = Object.fromEntries(AIRCRAFT.map(a => [a.id, a]));
-
-const NAMES_M = ['Alejandro','Javier','Íñigo','Mikel','Álvaro','Sergio','Daniel','Jorge','Rafael','Unai','Pablo','Marcos','Diego','Hugo','Adrián','Asier','Fernando','Gonzalo','Ignacio','Rodrigo','Aitor','Martín'];
-const NAMES_F = ['Lucía','Carmen','Elena','Irene','Paula','Ane','Nerea','Marta','Sofía','Claudia','Laura','Alba','Leire','Valeria','Cristina','Julia','Noelia','Olivia','Amaia','Inés','Beatriz','Carlota'];
-const SURN = ['García','Fernández','Etxeberria','Aguirre','Navarro','Ortega','Castillo','Ibarra','Ruiz','Romero','Delgado','Zubiaurre','Molina','Herrera','Vidal','Sáez','Prieto','Arrieta','Montero','Salazar','Iglesias','Urquijo','Cortés','Mendoza','Lasarte','Belmonte','Olabarria','Valverde','Quintana','Echevarría'];
-const CATERING = ['jamón ibérico de bellota y pan de cristal','sushi omakase','ostras con champán','tabla de quesos curados','tortilla de patata recién hecha','pintxos donostiarras','caviar Beluga con blinis','fruta tropical cortada','croissants de mantequilla','solomillo con foie','ensalada de burrata','chocolates belgas'];
-const DRINKS = ['un café solo','un cappuccino','zumo de naranja natural','agua con gas y limón','un té matcha','un chocolate caliente','una limonada de la casa','un smoothie de frutos rojos'];
-const SKY = ['Despejado ☀️','Poco nuboso 🌤️','Nubes y claros ⛅','Brisa suave 🌬️','Cielo limpio 🌙'];
-const GATES = ['Pie de avión','Plataforma VIP 3','FBO · Stand 7','Hangar privado 2','Rampa ejecutiva 5'];
-
-const TIERS = [
- { n:'Silver',   h:0,   c:'#c9ccd3' },
- { n:'Gold',     h:5,   c:'#d4af6a' },
- { n:'Platinum', h:20,  c:'#e9e7e1' },
- { n:'Black',    h:50,  c:'#1a1a1a' },
- { n:'Infinite', h:100, c:'#9b7bff' },
-];
-const PHASES = [
- { to:.03, n:'Rodaje',       i:'🛞' },
- { to:.08, n:'Despegue',     i:'🛫' },
- { to:.20, n:'Ascenso',      i:'↗️' },
- { to:.82, n:'Crucero',      i:'✈️' },
- { to:.95, n:'Descenso',     i:'↘️' },
- { to:1.01,n:'Aproximación', i:'🛬' },
-];
-
-/* =================== UTILIDADES =================== */
-const $ = id => document.getElementById(id);
-const LS = { get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
-const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-const flag = cc => cc === 'BL' ? '🇧🇱' : String.fromCodePoint(...[...cc].map(c => 127397 + c.charCodeAt(0)));
-const fmtN = n => Math.round(n).toLocaleString('es-ES');
-const pad = n => String(n).padStart(2,'0');
-function fmtClock(ms){ ms=Math.max(0,ms); const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`; }
-function fmtHM(min){ min=Math.round(min); const h=Math.floor(min/60), m=min%60; return h ? `${h} h ${pad(m)} min` : `${m} min`; }
-function fmtTime(ts){ const d=new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-function fmtDate(ts){ return new Date(ts).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase().replace('.',''); }
-function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
-const pick = (r,arr) => arr[Math.floor(r()*arr.length)];
-function distKm(a,b){ const R=6371, toR=Math.PI/180; const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR; const h=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
-function flightMin(dist,ac){ return Math.max(15, Math.round(dist/(ac.speed*0.92)*60 + 22)); }
-function cruiseFL(dist,ac){ if(dist<400) return 280; if(dist<900) return 370; return Math.min(ac.ceil/100, dist>5000 ? 470 : 430); }
-function bestAircraftFor(dist){ return AIRCRAFT.find(a => a.range >= dist) || AIRCRAFT[AIRCRAFT.length-1]; }
-function person(r,g){ g = g || (r()<.5?'M':'F'); return `${pick(r, g==='M'?NAMES_M:NAMES_F)} ${pick(r,SURN)} ${pick(r,SURN)}`; }
-function greeting(){ const h=new Date().getHours(); return h<6?'Buenas noches':h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches'; }
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2800); }
-function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
-
-/* =================== ESTADO =================== */
-const pref = LS.get('vp_pref', { origin:'MAD', dest:null, ac:'g700', study:60 });
-let S = { origin: AP[pref.origin] ? pref.origin : 'MAD', dest: AP[pref.dest] ? pref.dest : null, ac: ACF[pref.ac] ? pref.ac : 'g700', study: pref.study || 60 };
-let flight = LS.get('vp_active', null);
-let log = LS.get('vp_log', []);
-let follow = false;
-const savePref = () => LS.set('vp_pref', { origin:S.origin, dest:S.dest, ac:S.ac, study:S.study });
-const saveFlight = () => flight ? LS.set('vp_active', flight) : LS.del('vp_active');
-const saveLog = () => LS.set('vp_log', log);
-
-/* =================== MAPA =================== */
-let map, airportLayer, routeLayer, planeMarker, flownLine, routeA, routeB;
-const hasLeaflet = typeof L !== 'undefined';
-function initMap(){
-  if(!hasLeaflet){ $('map').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#777">Mapa no disponible sin conexión</div>'; return; }
-  map = L.map('map', { zoomControl:false, worldCopyJump:true, minZoom:2, attributionControl:true }).setView([40,-3], 4);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'Tiles &copy; Esri', maxZoom:12
-  }).addTo(map);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom:12, opacity:.75
-  }).addTo(map);
-  L.control.zoom({ position:'bottomright' }).addTo(map);
-  airportLayer = L.layerGroup().addTo(map);
-  routeLayer = L.layerGroup().addTo(map);
-  AIRPORTS.forEach(a => {
-    const m = L.circleMarker([a.lat,a.lon], { radius:3.5, color:'#d4af6a', weight:1, fillColor:'#d4af6a', fillOpacity:.55, opacity:.6 });
-    m.bindPopup(`<div style="font-weight:700">${flag(a.cc)} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}</div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>`);
-    airportLayer.addLayer(m);
-  });
-  map.on('dragstart', () => { if(follow){ follow=false; $('bFollow').classList.remove('on'); } });
-}
-function routeLatLngs(o,d){ let dl=d.lon; const diff=dl-o.lon; if(diff>180) dl-=360; else if(diff<-180) dl+=360; return [L.latLng(o.lat,o.lon), L.latLng(d.lat,dl)]; }
-function posAt(p){ const pa=map.project(routeA,0), pb=map.project(routeB,0); return map.unproject(pa.add(pb.subtract(pa).multiplyBy(p)),0); }
-function screenAngle(){ const pa=map.project(routeA,0), pb=map.project(routeB,0); return Math.atan2(pb.y-pa.y,pb.x-pa.x)*180/Math.PI; }
-function apIcon(a,tag){ return L.divIcon({ className:'ap-label', iconSize:[0,0], html:`<div class="ap-pin"></div><div class="ap-tag"><small>${tag}</small><b>${a.iata}</b> · ${a.city}</div>` }); }
-function drawRoute(fit=true){
-  if(!map) return;
-  routeLayer.clearLayers(); planeMarker=null; flownLine=null;
-  const o=AP[S.origin], d=AP[S.dest];
-  if(!o) return;
-  if(!d){ routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')})); if(fit) map.flyTo([o.lat,o.lon],5,{duration:.8}); return; }
-  [routeA, routeB] = routeLatLngs(o,d);
-  routeLayer.addLayer(L.polyline([routeA,routeB], { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
-  flownLine = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:3.5, opacity:1 });
-  routeLayer.addLayer(flownLine);
-  routeLayer.addLayer(L.marker(routeA,{icon:apIcon(o,'Origen')}));
-  routeLayer.addLayer(L.marker(routeB,{icon:apIcon(d,'Destino')}));
-  const ang = screenAngle() + 45; // el emoji ✈️ apunta al noreste
-  planeMarker = L.marker(routeA, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:`<div style="transform:rotate(${ang}deg)">✈️</div>` }) });
-  routeLayer.addLayer(planeMarker);
-  if(fit) fitRoute();
-}
-function fitRoute(){
-  if(!map || !routeA) return;
-  const small = window.innerWidth < 820;
-  const pad = flight && flight.start
-    ? { paddingTopLeft:[40,small?200:140], paddingBottomRight:[40,small?300:230] }
-    : { paddingTopLeft:[small?40:460,110], paddingBottomRight:[60,small?(window.innerHeight*.6):60] };
-  map.fitBounds(L.latLngBounds([routeA,routeB]), { ...pad, maxZoom:7 });
-}
-function updatePlane(p){
-  if(!map || !planeMarker) return;
-  const pos = posAt(p);
-  planeMarker.setLatLng(pos);
-  flownLine.setLatLngs([routeA,pos]);
-  if(follow) map.panTo(pos, { animate:true, duration:.8 });
-}
-
-/* =================== PLANIFICADOR =================== */
-function setupCombo(inp, list, key){
-  let active=-1, items=[];
-  const render = () => {
-    const q = norm(inp.value.trim());
-    items = AIRPORTS.filter(a => !q || norm(`${a.iata} ${a.city} ${a.name} ${COUNTRIES[a.cc]||''}`).includes(q)).slice(0,50);
-    list.innerHTML = items.map((a,i) => `<div class="opt${i===active?' active':''}" data-i="${a.iata}">${flag(a.cc)} <b>${a.iata}</b> <span>${a.city}</span> <small>${a.name}</small></div>`).join('') || '<div class="opt" style="color:var(--muted)">Sin resultados</div>';
-    list.hidden = false;
-  };
-  inp.addEventListener('focus', () => { inp.select(); active=-1; render(); });
-  inp.addEventListener('input', () => { active=0; render(); });
-  inp.addEventListener('keydown', e => {
-    if(list.hidden) return;
-    if(e.key==='ArrowDown'){ active=Math.min(items.length-1,active+1); render(); e.preventDefault(); }
-    else if(e.key==='ArrowUp'){ active=Math.max(0,active-1); render(); e.preventDefault(); }
-    else if(e.key==='Enter' && items[Math.max(0,active)]){ pickAirport(key, items[Math.max(0,active)].iata); inp.blur(); }
-    else if(e.key==='Escape') inp.blur();
-  });
-  list.addEventListener('mousedown', e => { const o=e.target.closest('.opt[data-i]'); if(o){ e.preventDefault(); pickAirport(key,o.dataset.i); inp.blur(); } });
-  inp.addEventListener('blur', () => setTimeout(() => { list.hidden=true; syncInputs(); }, 120));
-}
-function syncInputs(){
-  const o=AP[S.origin], d=AP[S.dest];
-  $('inOrigin').value = o ? `${o.iata} · ${o.city}` : '';
-  $('inDest').value = d ? `${d.iata} · ${d.city}` : '';
-}
-window.pickAirport = function(key, iata){
-  if(flight && flight.start) return;
-  if(key==='origin' && iata===S.dest) S.dest=S.origin;
-  if(key==='dest' && iata===S.origin){ toast('El destino debe ser distinto del origen'); return; }
-  S[key]=iata;
-  if(map) map.closePopup();
-  ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute();
-};
-function ensureAircraft(){
-  if(!S.dest) return;
-  const dist = distKm(AP[S.origin],AP[S.dest]);
-  if(ACF[S.ac].range < dist){ const b=bestAircraftFor(dist); S.ac=b.id; toast(`Autonomía insuficiente: asignamos un ${b.short}`); }
-}
-function renderAircraftSelect(){
-  const dist = S.dest ? distKm(AP[S.origin],AP[S.dest]) : 0;
-  $('selAc').innerHTML = AIRCRAFT.map(a => {
-    const ok = a.range >= dist;
-    return `<option value="${a.id}" ${a.id===S.ac?'selected':''} ${ok?'':'disabled'}>${a.name} · ${a.cat} · ${fmtN(a.range)} km${ok?'':' (sin autonomía)'}</option>`;
-  }).join('');
-}
-function renderPlan(){
-  $('greet').innerHTML = `${greeting()}, <em>Comandante Supremo</em>.`;
-  renderAircraftSelect();
-  const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
-  if(!d){
-    $('summary').innerHTML = `<div class="note" style="margin:0">Elija un destino en el buscador, toque un aeropuerto del mapa o pida una sugerencia según su tiempo de estudio.</div>`;
-    $('btnBook').disabled = true;
-  } else {
-    const dist=distKm(o,d), mins=flightMin(dist,ac), fl=cruiseFL(dist,ac);
-    const pomos = Math.floor(mins/30);
-    $('summary').innerHTML = `
-      <div class="sum-route">
-        <div><div class="sum-iata">${o.iata}</div><div class="sum-city">${flag(o.cc)} ${o.city}</div></div>
-        <div class="sum-mid"><span>✈</span></div>
-        <div style="text-align:right"><div class="sum-iata">${d.iata}</div><div class="sum-city">${d.city} ${flag(d.cc)}</div></div>
-      </div>
-      <div class="stats">
-        <div class="stat"><div class="k">Distancia</div><div class="v">${fmtN(dist)} km</div></div>
-        <div class="stat"><div class="k">Tiempo vuelo</div><div class="v">${fmtHM(mins)}</div></div>
-        <div class="stat"><div class="k">Crucero</div><div class="v">FL${fl}</div></div>
-      </div>
-      <div class="note">${ac.name} a ${fmtN(ac.speed)} km/h. Llegada estimada a las <b>${fmtTime(Date.now()+mins*60000)}</b> si despega ahora${pomos?` · equivale a <b>${pomos} bloque${pomos>1?'s':''} de 25+5</b>`:''}.</div>`;
-    $('btnBook').disabled = false;
-  }
-  renderSuggestions();
-}
-function renderChips(){
-  const opts=[25,45,60,90,120,180,240];
-  $('chips').innerHTML = opts.map(m => `<button class="chip${S.study===m?' on':''}" data-m="${m}">${m<60?m+' min':(m/60)+' h'}</button>`).join('')
-    + `<input class="chip-inp" id="studyCustom" type="number" min="10" max="1200" placeholder="min" value="${opts.includes(S.study)?'':S.study}">`;
-}
-function renderSuggestions(){
-  const o=AP[S.origin]; $('suggFrom').textContent = `${o.city} (${o.iata})`;
-  const target=S.study;
-  const list = AIRPORTS.filter(a => a.iata!==o.iata).map(a => {
-    const dist=distKm(o,a), ac=ACF[S.ac].range>=dist ? ACF[S.ac] : bestAircraftFor(dist);
-    if(ac.range<dist) return null;
-    return { a, dist, mins: flightMin(dist,ac) };
-  }).filter(Boolean).sort((x,y) => Math.abs(x.mins-target)-Math.abs(y.mins-target)).slice(0,6);
-  $('sugg').innerHTML = list.map(x => `<button class="sugg-item" data-i="${x.a.iata}"><span class="fl">${flag(x.a.cc)}</span><span class="nm">${x.a.city}<small>${x.a.iata} · ${fmtN(x.dist)} km</small></span><span class="tm">${fmtHM(x.mins)}</span></button>`).join('');
-}
-
-/* =================== VUELO =================== */
-function createFlight(){
-  const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
-  const dist=distKm(o,d), mins=flightMin(dist,ac);
-  const r = mulberry32((Date.now() ^ Math.floor(Math.random()*1e9)) >>> 0);
-  const L3 = () => Array.from({length:3},()=>String.fromCharCode(65+Math.floor(r()*26))).join('');
-  const baseT = 27 - Math.abs(d.lat)*0.38;
-  return {
-    id: 'F'+Date.now(),
-    flightNo: 'VP ' + (100+Math.floor(r()*9800)),
-    callsign: 'SUPREMO ' + pad(1+Math.floor(r()*98)),
-    reg: 'EC-' + L3(),
-    from:o.iata, to:d.iata, ac:ac.id, dist, mins, durMs: mins*60000, fl: cruiseFL(dist,ac),
-    crew: { captain: person(r), fo: person(r), fa: person(r,'F') },
-    catering: pick(r,CATERING), drink: pick(r,DRINKS), gate: pick(r,GATES),
-    runway: pad(1+Math.floor(r()*36)) + pick(r,['L','R','C','']),
-    meteo: { t: Math.round(baseT + (r()*8-4)), sky: pick(r,SKY) },
-    booked: Date.now(), start:null, pausedTotal:0, pausedAt:null,
-    said: {}, nextMsg: 0, msgs: [], msgIdx: Math.floor(r()*10),
-  };
-}
-const elapsedMs = f => !f.start ? 0 : ((f.pausedAt || Date.now()) - f.start - f.pausedTotal);
-function tierFor(hours){ let t=TIERS[0]; for(const x of TIERS) if(hours>=x.h) t=x; return t; }
-function totals(){ const min=log.reduce((s,e)=>s+e.studyMin,0); return { flights:log.length, hours:min/60, km:log.reduce((s,e)=>s+(e.km||0),0), dests:new Set(log.filter(e=>e.status==='ok').map(e=>e.to)).size }; }
-
-function barcodeSVG(seed){
-  const r=mulberry32(seed); let x=0, out='';
-  while(x<196){ const w=1+Math.floor(r()*3.2); if(r()>.38) out+=`<rect x="${x}" y="0" width="${w}" height="58" fill="#1d1a14"/>`; x+=w+ (r()>.6?1:0); }
-  return `<svg viewBox="0 0 196 58" preserveAspectRatio="none">${out}</svg>`;
-}
-function hashStr(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
-const LOGO_SVG = `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#d4af6a" stroke-width="2"/><path d="M14 36 L50 22 L46 28 L30 34 L26 44 L22 44 L24 35 Z" fill="#f1d9a4"/></svg>`;
-
-function passHTML(f){
-  const o=AP[f.from], d=AP[f.to], ac=ACF[f.ac];
-  const dep = f.start || f.booked, arr = dep + f.durMs;
-  const tier = tierFor(totals().hours);
-  const code = `${f.flightNo.replace(' ','')}${f.from}${f.to}${new Date(dep).getDate()}`;
-  return `<div class="bp" id="bpCard">
-   <div class="bp-main">
-    <div class="bp-head">
-      <div class="bp-brand">${LOGO_SVG}<div><div class="n">VUELO PRIVADO</div><div class="s">PRIVATE AVIATION</div></div></div>
-      <div class="bp-type">TARJETA DE EMBARQUE<b>PRIVATE BOARDING PASS</b></div>
-    </div>
-    <div class="bp-body">
-      <div class="bp-pax">
-        <div><div class="bp-k">Pasajero · Passenger</div><div class="name">${PAX.name}</div><div class="alias">«${PAX.alias}» · CLUB ${tier.n.toUpperCase()}</div></div>
-        <div class="bp-vip">★ ÚNICO PASAJERO</div>
-      </div>
-      <div class="bp-route">
-        <div><div class="bp-k">Desde</div><div class="iata">${o.iata}</div><div class="city">${o.city}, ${COUNTRIES[o.cc]}</div></div>
-        <div class="bp-mid"><div class="ln"><span>✈</span></div><div class="d">${fmtN(f.dist)} km · ${fmtHM(f.mins)}</div></div>
-        <div class="end"><div class="bp-k">Hacia</div><div class="iata">${d.iata}</div><div class="city">${d.city}, ${COUNTRIES[d.cc]}</div></div>
-      </div>
-      <div class="bp-grid">
-        <div><div class="bp-k">Vuelo</div><div class="bp-v mono">${f.flightNo}</div></div>
-        <div><div class="bp-k">Fecha</div><div class="bp-v mono">${fmtDate(dep)}</div></div>
-        <div><div class="bp-k">Salida</div><div class="bp-v mono">${fmtTime(dep)}</div></div>
-        <div><div class="bp-k">Llegada est.</div><div class="bp-v mono">${fmtTime(arr)}</div></div>
-        <div><div class="bp-k">Terminal</div><div class="bp-v">FBO Ejecutivo</div></div>
-        <div><div class="bp-k">Puerta</div><div class="bp-v">${f.gate}</div></div>
-        <div><div class="bp-k">Asiento</div><div class="bp-v">Toda la cabina</div></div>
-        <div><div class="bp-k">Clase</div><div class="bp-v">Privado · VIP</div></div>
-        <div><div class="bp-k">Aeronave</div><div class="bp-v">${ac.short}</div></div>
-        <div><div class="bp-k">Matrícula</div><div class="bp-v mono">${f.reg}</div></div>
-        <div><div class="bp-k">Indicativo</div><div class="bp-v mono">${f.callsign}</div></div>
-        <div><div class="bp-k">Nivel crucero</div><div class="bp-v mono">FL${f.fl}</div></div>
-      </div>
-      <div class="bp-crew">
-        <div><div class="bp-k">Comandante</div><div class="bp-v">${f.crew.captain}</div></div>
-        <div><div class="bp-k">Primer oficial</div><div class="bp-v">${f.crew.fo}</div></div>
-        <div><div class="bp-k">Azafata · TCP</div><div class="bp-v">${f.crew.fa}</div></div>
-      </div>
-      <div class="bp-foot">
-        <div>Catering a bordo: <b>${f.catering}</b></div>
-        <div style="text-align:right">Meteo en ${d.city}*: <b>${f.meteo.t}°C · ${f.meteo.sky}</b></div>
-      </div>
-    </div>
-   </div>
-   <div class="bp-stub">
-     <div class="bp-stub-head">VUELO PRIVADO</div>
-     <div class="bp-stub-body">
-       <div><div class="bp-k">Pasajero</div><div class="bp-v" style="font-size:12.5px">G. CORBACHO MARTÍNEZ</div></div>
-       <div class="r2">${o.iata} → ${d.iata}</div>
-       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-         <div><div class="bp-k">Vuelo</div><div class="bp-v mono">${f.flightNo}</div></div>
-         <div><div class="bp-k">Salida</div><div class="bp-v mono">${fmtTime(dep)}</div></div>
-         <div><div class="bp-k">Asiento</div><div class="bp-v">1A ★</div></div>
-         <div><div class="bp-k">Embarque</div><div class="bp-v">A su ritmo</div></div>
-       </div>
-       <div class="bp-bar">${barcodeSVG(hashStr(code))}<div class="code">${code}</div></div>
-     </div>
-   </div>
-  </div>`;
-}
-
-function openModal(id){ $(id).classList.add('open'); }
-function closeModal(id){ $(id).classList.remove('open'); }
-document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target===m || e.target.hasAttribute('data-close')) { if(m.id!=='mConfirm') closeModal(m.id); } }));
-
-function showPass(f, mode){
-  $('bpHolder').innerHTML = passHTML(f);
-  const acts = $('mPassActions');
-  if(mode==='book'){
-    $('mPassTitle').textContent = 'Tarjeta de embarque emitida';
-    $('mPassSub').textContent = `${f.crew.captain} y su tripulación le esperan a pie de avión.`;
-    acts.innerHTML = `<button class="btn btn-ghost" id="pCancel">Cancelar</button><button class="btn btn-ghost" id="pDl">⬇️ Descargar</button><button class="btn btn-gold" id="pBoard">✈️ Embarcar y despegar</button>`;
-    $('pCancel').onclick = () => { closeModal('mPass'); flight=null; saveFlight(); };
-    $('pBoard').onclick = () => { closeModal('mPass'); board(); };
-  } else {
-    $('mPassTitle').textContent = 'Tarjeta de embarque';
-    $('mPassSub').textContent = `${f.flightNo} · ${AP[f.from].city} → ${AP[f.to].city}`;
-    acts.innerHTML = `<button class="btn btn-ghost" data-close>Cerrar</button><button class="btn btn-gold" id="pDl">⬇️ Descargar</button>`;
-  }
-  $('pDl').onclick = () => downloadPass(f);
-  openModal('mPass');
-}
-async function downloadPass(f){
-  try{
-    if(!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
-    const el = $('bpCard');
-    el.style.setProperty('--notch','#f7f2e6');
-    const c = await html2canvas(el, { backgroundColor:null, scale:2, useCORS:true });
-    el.style.removeProperty('--notch');
-    const a = document.createElement('a');
-    a.href = c.toDataURL('image/png'); a.download = `tarjeta-${f.flightNo.replace(' ','')}-${f.from}-${f.to}.png`; a.click();
-    toast('Tarjeta descargada');
-  }catch(e){ toast('No se pudo generar la imagen. Puede hacer captura de pantalla.'); }
-}
-
-/* ---- audio ---- */
-let actx=null, master=null, noise=null, ambTimer=null;
-let vol = LS.get('vp_vol', 0.5);
-function audio(){
-  try{
-    if(!actx){ actx=new (window.AudioContext||window.webkitAudioContext)(); master=actx.createGain(); master.gain.value=vol; master.connect(actx.destination); }
-    if(actx.state==='suspended') actx.resume();
-  }catch(e){}
-  return actx;
-}
-function setVolume(v){ vol=v; LS.set('vp_vol',v); if(master) master.gain.setTargetAtTime(v, actx.currentTime, .15); }
-// tono suave con caída exponencial
-function tone(fq, t0, dur, peak, type='sine'){
-  const c=actx, o=c.createOscillator(), g=c.createGain();
-  o.type=type; o.frequency.value=fq;
-  const t=c.currentTime+t0;
-  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+.015); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
-  o.connect(g).connect(master); o.start(t); o.stop(t+dur+.05);
-}
-// aviso de megafonía (ding-dong)
-function chime(){ if(!audio()) return; tone(659.25,0,1.6,.10); tone(523.25,.55,1.9,.10); }
-// sonidos de cabina ocasionales
-const CABIN_SOUNDS = {
-  seatbelt(){ tone(1046.5,0,2.2,.045); tone(2093,0,1.2,.008); },                 // "bong" de cinturones
-  call(){ tone(1318.5,0,.9,.035); tone(1318.5,.35,1.1,.035); },                  // llamada a TCP
-  lowDing(){ tone(587.3,0,2.4,.05); },                                           // ding grave
-  interphone(){ tone(880,0,.35,.03); tone(880,.18,.35,.03); tone(880,.36,.5,.03); }, // interfono cabina-cockpit
-  click(){ // clic de micrófono
-    const c=actx, len=c.sampleRate*.06, buf=c.createBuffer(1,len,c.sampleRate), d=buf.getChannelData(0);
-    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
-    const src=c.createBufferSource(); src.buffer=buf; const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; const g=c.createGain(); g.gain.value=.06;
-    src.connect(bp).connect(g).connect(master); src.start();
-  },
-};
-function scheduleAmbient(){
-  clearTimeout(ambTimer);
-  ambTimer = setTimeout(() => {
-    if(noise && actx && actx.state==='running'){
-      const keys=['seatbelt','call','lowDing','interphone','click','seatbelt','lowDing'];
-      CABIN_SOUNDS[keys[Math.floor(Math.random()*keys.length)]]();
-    }
-    scheduleAmbient();
-  }, (75 + Math.random()*165) * 1000); // cada 1–4 min aprox.
-}
-function setNoise(on, persist=true){
-  const c=audio(); if(!c) return;
-  const btn=$('bNoise');
-  if(!on){
-    if(noise){ const n=noise; n.g.gain.setTargetAtTime(0,c.currentTime,.6); setTimeout(()=>{ n.nodes.forEach(x=>{ try{x.stop();}catch(e){} }); },2500); noise=null; }
-    clearTimeout(ambTimer);
-    btn.classList.remove('on'); btn.textContent='🔈 Sonido de cabina'; if(persist) LS.set('vp_noise',false); return;
-  }
-  if(noise) return;
-  const g=c.createGain(); g.gain.value=0; g.connect(master);
-  // 1) rumor de aire (ruido marrón filtrado)
-  const len=c.sampleRate*8, buf=c.createBuffer(2,len,c.sampleRate);
-  for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch); let last=0; for(let i=0;i<len;i++){ const w=Math.random()*2-1; last=(last+0.02*w)/1.02; d[i]=last*3.2; } }
-  const src=c.createBufferSource(); src.buffer=buf; src.loop=true;
-  const lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420; lp.Q.value=.4;
-  const airG=c.createGain(); airG.gain.value=.55;
-  // respiración lenta del filtro (sensación de flujo de aire)
-  const lfo=c.createOscillator(), lfoG=c.createGain(); lfo.frequency.value=.05; lfoG.gain.value=90; lfo.connect(lfoG).connect(lp.frequency);
-  src.connect(lp).connect(airG).connect(g);
-  // 2) zumbido grave de motores (dos osciladores ligeramente desafinados)
-  const hum=c.createBiquadFilter(); hum.type='lowpass'; hum.frequency.value=160;
-  const humG=c.createGain(); humG.gain.value=.05;
-  const o1=c.createOscillator(), o2=c.createOscillator(), o3=c.createOscillator();
-  o1.type='sawtooth'; o1.frequency.value=72; o2.type='sawtooth'; o2.frequency.value=72.6; o3.type='sine'; o3.frequency.value=144.3;
-  const o3g=c.createGain(); o3g.gain.value=.4;
-  o1.connect(hum); o2.connect(hum); o3.connect(o3g).connect(hum); hum.connect(humG).connect(g);
-  // 3) siseo agudo muy suave del aire acondicionado
-  const src2=c.createBufferSource(); src2.buffer=buf; src2.loop=true; src2.playbackRate.value=1.7;
-  const hp=c.createBiquadFilter(); hp.type='bandpass'; hp.frequency.value=2400; hp.Q.value=.6;
-  const hissG=c.createGain(); hissG.gain.value=.012;
-  src2.connect(hp).connect(hissG).connect(g);
-  [src,src2,lfo,o1,o2,o3].forEach(n=>n.start());
-  g.gain.setTargetAtTime(.9,c.currentTime,1.5); // entrada suave
-  noise={g, nodes:[src,src2,lfo,o1,o2,o3]};
-  scheduleAmbient();
-  btn.classList.add('on'); btn.textContent='🔊 Sonido de cabina'; if(persist) LS.set('vp_noise',true);
-}
-// tras recargar con un vuelo en curso, el navegador exige un toque para reanudar el audio
-document.addEventListener('pointerdown', () => { if(flight && flight.start && !noise && LS.get('vp_noise',true)) setNoise(true); else audio(); }, { once:true });
-
-/* ---- megafonía ---- */
-function say(who, text, sound=true){
-  if(!flight) return;
-  const roles = { cap:['Comandante',flight.crew.captain], fo:['Primer oficial',flight.crew.fo], fa:['Azafata',flight.crew.fa] };
-  const [role,name] = roles[who];
-  flight.msgs.unshift({ who:`${role} ${name.split(' ')[0]}`, text, t:Date.now() });
-  flight.msgs = flight.msgs.slice(0,6);
-  saveFlight(); renderPA();
-  if(sound) chime();
-}
-function renderPA(){
-  if(!flight) return;
-  $('paList').innerHTML = flight.msgs.slice(0,4).map(m => `<div class="msg"><div class="who">${m.who}<span>${fmtTime(m.t)}</span></div>${m.text}</div>`).join('');
-}
-function phaseIdx(p){ return PHASES.findIndex(x => p < x.to); }
-function announcements(p, el){
-  const f=flight, d=AP[f.to], o=AP[f.from], ac=ACF[f.ac], s=f.said;
-  const once = (k, fn) => { if(!s[k]){ s[k]=1; fn(); } };
-  const pi = phaseIdx(p);
-  if(pi>=0) once('p0', () => say('cap', `Buenas, Comandante Supremo. Le habla ${f.crew.captain}, su comandante. Junto a ${f.crew.fo} y ${f.crew.fa} le damos la bienvenida a bordo de este ${ac.name}. Vuelo ${f.flightNo} a ${d.city}: ${fmtHM(f.mins)} de concentración por delante.`));
-  if(pi>=1) once('p1', () => say('fo', `Torre de ${o.city} nos autoriza a despegar por la pista ${f.runway}. Potencia de despegue… allá vamos.`));
-  if(pi>=2) once('p2', () => say('fa', `Comandante Supremo, en cuanto se apague la señal de cinturones le sirvo ${f.drink}. Ponga el móvil en modo avión, que aquí se viene a estudiar.`));
-  if(pi>=3) once('p3', () => say('cap', `Hemos alcanzado nuestro nivel de crucero, FL${f.fl}. Cielo tranquilo: momento perfecto para concentrarse.`));
-  if(p>=.5) once('half', () => say('cap', `Hemos superado la mitad del trayecto. Lleva ${fmtHM(el/60000)} de estudio; quedan ${fmtHM((f.durMs-el)/60000)}. Excelente ritmo.`));
-  if(pi>=4) once('p4', () => say('cap', `Iniciamos el descenso hacia ${d.city}. En destino ${f.meteo.t}°C, ${f.meteo.sky.toLowerCase()}. Vaya cerrando sus apuntes.`));
-  if(pi>=5) once('p5', () => say('fo', `Tren abajo y blocado. Aproximación final a ${d.iata}, pista a la vista.`));
-  // mensajes periódicos en crucero
-  const every = Math.min(25, Math.max(8, f.mins/6)) * 60000;
-  if(pi===3){
-    if(!f.nextMsg) f.nextMsg = el + every;
-    if(el >= f.nextMsg){
-      f.nextMsg = el + every;
-      const pool = [
-        ['fa', `Le traigo ${f.catering}. Coma algo, el cerebro también necesita combustible.`],
-        ['fa', `¿Más agua, Comandante Supremo? La hidratación también cuenta como estudio.`],
-        ['fo', `Viento de cola favorable. Usted mantenga el rumbo en sus apuntes.`],
-        ['cap', `Todo en orden en cabina de vuelo. Llevamos ${fmtHM(el/60000)} sin perder altitud. Siga así.`],
-        ['fa', `Si necesita estirar las piernas, la cabina es toda suya. Treinta segundos y de vuelta al asiento.`],
-        ['fo', `Contacto con control de tránsito aéreo: ruta directa autorizada. Ni una distracción en el radar.`],
-        ['fa', `Le he dejado ${pick(Math.random,DRINKS)} en la mesa auxiliar. Va de maravilla.`],
-        ['cap', `Recuerde: cada minuto de vuelo es un minuto de estudio. Nos quedan ${fmtHM((f.durMs-el)/60000)}.`],
-      ];
-      const [w,t] = pool[(f.msgIdx++) % pool.length];
-      say(w,t);
-    }
-  }
-  saveFlight();
-}
-
-/* ---- ciclo de vuelo ---- */
-let wakeLock=null;
-async function keepAwake(){ try{ if('wakeLock' in navigator && flight && flight.start && !flight.pausedAt) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
-document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible') keepAwake(); });
-
-function book(){
-  if(!S.dest) return;
-  flight = createFlight(); saveFlight();
-  showPass(flight,'book');
-}
-function board(){
-  if(!flight) return;
-  flight.start = Date.now(); flight.pausedTotal=0; flight.pausedAt=null; flight.said={}; flight.msgs=[]; flight.nextMsg=0;
-  saveFlight();
-  audio();
-  if(LS.get('vp_noise',true)) setNoise(true);
-  try{ if('Notification' in window && Notification.permission==='default') Notification.requestPermission(); }catch(e){}
-  enterFlightMode();
-}
-function enterFlightMode(){
-  S.origin=flight.from; S.dest=flight.to; S.ac=flight.ac;
-  document.body.classList.add('flying');
-  if(map) map.removeLayer(airportLayer);
-  const o=AP[flight.from], d=AP[flight.to], ac=ACF[flight.ac];
-  $('hRoute').textContent = `${o.iata} ✈ ${d.iata}`;
-  $('hCities').textContent = `${o.city} → ${d.city}`;
-  $('pFrom').textContent = `${o.iata} · ${fmtTime(flight.start)}`;
-  $('crewline').innerHTML = `${ac.name} <b>${flight.reg}</b> · Cmdte. <b>${flight.crew.captain}</b> · 1.er Of. <b>${flight.crew.fo}</b> · TCP <b>${flight.crew.fa}</b>`;
-  drawRoute(false); fitRoute(); renderPA(); keepAwake(); tick(true);
-}
-function exitFlightMode(){
-  document.body.classList.remove('flying');
-  if(map && !map.hasLayer(airportLayer)) airportLayer.addTo(map);
-  follow=false; $('bFollow').classList.remove('on');
-  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock=null; }
-  setNoise(false, false);
-  document.title = 'Vuelo Privado · Temporizador de estudio';
-}
-function togglePause(){
-  if(!flight || !flight.start) return;
-  if(flight.pausedAt){ flight.pausedTotal += Date.now()-flight.pausedAt; flight.pausedAt=null; say('cap','Salimos del circuito de espera. Reanudamos la ruta, Comandante Supremo.'); keepAwake(); }
-  else { flight.pausedAt = Date.now(); say('cap','Control nos pone en circuito de espera. Tómese un respiro; reanudamos cuando usted diga.'); }
-  saveFlight(); tick(true);
-}
-function addLog(status){
-  const f=flight, el=elapsedMs(f), p=Math.min(1,el/f.durMs);
-  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*p), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:{...f, msgs:[], said:{}} };
-  log.unshift(entry); saveLog(); updateTier();
-  return entry;
-}
-function land(){
-  const f=flight; const tierBefore = tierFor(totals().hours).n;
-  say('cap', `Bienvenido a ${AP[f.to].city}, Comandante Supremo. Ha sido un honor volar con usted.`);
-  const e = addLog('ok');
-  const tierNow = tierFor(totals().hours);
-  try{ if('Notification' in window && Notification.permission==='granted') new Notification('🛬 Aterrizaje en ' + AP[f.to].city, { body:`Vuelo ${f.flightNo} completado: ${fmtHM(e.studyMin)} de estudio.`, icon:'icon.svg' }); }catch(err){}
-  $('landTitle').textContent = `Bienvenido a ${AP[f.to].city}`;
-  $('landSub').innerHTML = `Vuelo ${f.flightNo} completado, Comandante Supremo.${tierBefore!==tierNow.n?` <br><b style="color:var(--gold2)">¡Ascenso al Club ${tierNow.n}!</b>`:''}`;
-  const t=totals();
-  $('landStats').innerHTML = [
-    ['Tiempo estudiado', fmtHM(e.studyMin)], ['Distancia', fmtN(f.dist)+' km'], ['Aeronave', ACF[f.ac].short],
-    ['Total horas', t.hours.toFixed(1)+' h'], ['Total vuelos', t.flights], ['Club', tierNow.n],
-  ].map(([k,v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
-  $('landNext').textContent = `✈️ Nuevo vuelo desde ${AP[f.to].city}`;
-  flight=null; saveFlight();
-  S.origin=e.to; S.dest=null; savePref();
-  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
-  openModal('mLand');
-}
-async function abort(){
-  const ok = await confirmBox('¿Desviar el vuelo?', 'El tiempo estudiado hasta ahora se guardará en su bitácora como vuelo desviado.', 'Desviar');
-  if(!ok) return;
-  const f=flight; addLog('ko');
-  flight=null; saveFlight();
-  S.origin=f.from; S.dest=f.to;
-  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
-  toast('Vuelo desviado. Registrado en la bitácora.');
-}
-function profile(p){
-  const ac=ACF[flight.ac], cr=flight.fl*100, v=ac.speed;
-  if(p<.03) return { alt:0, spd:20+p/.03*20 };
-  if(p<.08){ const t=(p-.03)/.05; return { alt:t*3000, spd:160+t*190 }; }
-  if(p<.20){ const t=(p-.08)/.12; return { alt:3000+t*(cr-3000), spd:350+t*(v-350) }; }
-  if(p<.82) return { alt:cr, spd:v + Math.sin(Date.now()/9000)*6 };
-  if(p<.95){ const t=(p-.82)/.13; return { alt:cr-t*(cr-5000), spd:v-t*(v-420) }; }
-  if(p<1){ const t=(p-.95)/.05; return { alt:5000*(1-t), spd:420-t*190 }; }
-  return { alt:0, spd:0 };
-}
-let lastMapUpd=0;
-function tick(force){
-  if(!flight || !flight.start) return;
-  const el=elapsedMs(flight), p=Math.min(1, el/flight.durMs), rem=flight.durMs-el;
-  if(p>=1){ land(); return; }
-  const paused=!!flight.pausedAt, pi=phaseIdx(p), ph=PHASES[pi]||PHASES[PHASES.length-1], pr=profile(p);
-  $('hTimer').textContent = fmtClock(rem);
-  $('hTimerLbl').textContent = paused ? 'En espera · pausado' : 'Tiempo restante';
-  $('hEl').textContent = fmtClock(el);
-  $('hAlt').textContent = paused && p>.08 && p<.95 ? 'Holding' : fmtN(pr.alt)+' ft';
-  $('hSpd').textContent = fmtN(pr.spd)+' km/h';
-  $('hKm').textContent = fmtN(flight.dist*(1-p))+' km';
-  $('hPct').textContent = (p*100).toFixed(1)+'%';
-  $('hEta').textContent = fmtTime(Date.now()+rem);
-  $('pTo').textContent = `${AP[flight.to].iata} · ${fmtTime(Date.now()+rem)}`;
-  $('pFill').style.width = (p*100)+'%';
-  $('pPlane').style.left = (p*100)+'%';
-  $('phase').classList.toggle('paused',paused);
-  $('phaseTxt').textContent = paused ? '⏸ Circuito de espera' : `${ph.i} ${ph.n}`;
-  $('phaseFn').textContent = `${flight.flightNo} · ${flight.callsign}`;
-  $('bPause').textContent = paused ? '▶️ Reanudar' : '⏸ Pausar';
-  document.title = `${paused?'⏸':'✈️'} ${fmtClock(rem)} · ${flight.from}→${flight.to}`;
-  if(force || Date.now()-lastMapUpd>1000){ lastMapUpd=Date.now(); updatePlane(p); }
-  if(!paused) announcements(p, el);
-}
-setInterval(tick, 250);
-
-/* ---- confirm ---- */
-function confirmBox(title,text,okLbl='Aceptar'){
-  return new Promise(res => {
-    $('cfTitle').textContent=title; $('cfText').textContent=text; $('cfYes').textContent=okLbl;
-    const done=v=>{ closeModal('mConfirm'); $('cfYes').onclick=$('cfNo').onclick=null; res(v); };
-    $('cfYes').onclick=()=>done(true); $('cfNo').onclick=()=>done(false);
-    openModal('mConfirm');
-  });
-}
-
-/* ---- bitácora ---- */
-function updateTier(){ const t=tierFor(totals().hours); $('tierName').textContent='Club '+t.n; $('tierDot').style.background=t.c; }
-function renderLog(){
-  const t=totals();
-  $('lbStats').innerHTML = [[t.flights,'Vuelos'],[t.hours.toFixed(1),'Horas de estudio'],[fmtN(t.km),'Kilómetros'],[t.dests,'Destinos']].map(([v,k]) => `<div class="lb-stat"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
-  const cur=tierFor(t.hours), idx=TIERS.indexOf(cur), next=TIERS[idx+1];
-  const pct = next ? Math.min(100,(t.hours-cur.h)/(next.h-cur.h)*100) : 100;
-  $('tierCard').innerHTML = `<div class="tier-row"><div>Club Vuelo Privado<br><b>${cur.n}</b></div><div style="text-align:right;color:var(--muted)">${next?`Faltan <b style="font-size:16px">${(next.h-t.hours).toFixed(1)} h</b><br>para ${next.n}`:'Nivel máximo alcanzado'}</div></div><div class="tier-bar"><div style="width:${pct}%"></div></div>`;
-  $('lbList').innerHTML = log.length ? log.map((e,i) => `<button class="lb-item" data-i="${i}">
-      <span class="rt">${e.from} → ${e.to}</span>
-      <span class="meta"><b>${AP[e.from]?.city||e.from} → ${AP[e.to]?.city||e.to}</b><br>${e.flightNo} · ${fmtDate(e.date)} · ${fmtTime(e.date)}</span>
-      <span class="meta hide-m" style="text-align:right"><b>${fmtHM(e.studyMin)}</b><br>${fmtN(e.km)} km</span>
-      <span class="st ${e.status==='ok'?'ok':'ko'}">${e.status==='ok'?'Completado':'Desviado'}</span></button>`).join('')
-    : `<div class="empty">Aún no hay vuelos registrados.<br>Su primer despegue le espera, Comandante Supremo.</div>`;
-  $('lbClear').style.display = log.length ? '' : 'none';
-}
-
-/* =================== EVENTOS =================== */
-setupCombo($('inOrigin'), $('lsOrigin'), 'origin');
-setupCombo($('inDest'), $('lsDest'), 'dest');
-$('btnSwap').onclick = () => { if(!S.dest) return; [S.origin,S.dest]=[S.dest,S.origin]; savePref(); syncInputs(); renderPlan(); drawRoute(); };
-$('selAc').onchange = e => { S.ac=e.target.value; savePref(); renderPlan(); };
-$('btnBook').onclick = book;
-$('btnRandom').onclick = () => {
-  const o=AP[S.origin];
-  const c = AIRPORTS.filter(a => a.iata!==o.iata).map(a => ({a, m:flightMin(distKm(o,a), bestAircraftFor(distKm(o,a)))})).filter(x => Math.abs(x.m-S.study) <= Math.max(20, S.study*.35));
-  const pool = c.length ? c : AIRPORTS.filter(a=>a.iata!==o.iata).map(a=>({a}));
-  const x = pool[Math.floor(Math.random()*pool.length)];
-  S.dest = x.a.iata; S.ac = (ACF[S.ac].range >= distKm(o,x.a)) ? S.ac : bestAircraftFor(distKm(o,x.a)).id;
-  savePref(); syncInputs(); renderPlan(); drawRoute(); toast(`Destino sorpresa: ${x.a.city} ${flag(x.a.cc)}`);
-};
-$('chips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.study=+c.dataset.m; savePref(); renderChips(); renderSuggestions(); });
-$('chips').addEventListener('change', e => { if(e.target.id==='studyCustom'){ const v=Math.max(10,Math.min(1200,+e.target.value||60)); S.study=v; savePref(); renderChips(); renderSuggestions(); } });
-$('sugg').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(!b) return; const d=AP[b.dataset.i]; const dist=distKm(AP[S.origin],d); if(ACF[S.ac].range<dist) S.ac=bestAircraftFor(dist).id; S.dest=d.iata; savePref(); syncInputs(); renderPlan(); drawRoute(); });
-$('bPause').onclick = togglePause;
-$('bNoise').onclick = () => setNoise(!noise);
-$('vol').value = vol;
-$('vol').oninput = e => { audio(); setVolume(+e.target.value); };
-$('bFollow').onclick = () => { follow=!follow; $('bFollow').classList.toggle('on',follow); if(follow){ map && map.setZoom(Math.max(map.getZoom(),6)); tick(true); } else fitRoute(); };
-$('bPass').onclick = () => flight && showPass(flight,'view');
-$('bFull').onclick = () => { try{ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }catch(e){} };
-$('bAbort').onclick = abort;
-$('paHead').onclick = () => { $('pa').classList.toggle('collapsed'); $('paToggle').textContent = $('pa').classList.contains('collapsed') ? '+' : '–'; };
-$('btnLog').onclick = $('btnClub').onclick = () => { renderLog(); openModal('mLog'); };
-$('lbList').addEventListener('click', e => { const b=e.target.closest('.lb-item'); if(!b) return; const en=log[+b.dataset.i]; showPass(en.f,'view'); });
-$('lbClear').onclick = async () => { closeModal('mLog'); if(await confirmBox('¿Borrar la bitácora?','Se eliminarán todos los vuelos y horas registradas. No se puede deshacer.','Borrar')){ log=[]; saveLog(); updateTier(); toast('Bitácora borrada'); } };
-$('landNext').onclick = () => { closeModal('mLand'); $('inDest').focus(); };
-$('landLog').onclick = () => { closeModal('mLand'); renderLog(); openModal('mLog'); };
-document.addEventListener('keydown', e => {
-  if(e.key==='Escape') document.querySelectorAll('.modal.open').forEach(m => { if(m.id!=='mConfirm') closeModal(m.id); });
-  if(e.code==='Space' && flight && flight.start && !document.querySelector('.modal.open') && document.activeElement.tagName!=='INPUT'){ e.preventDefault(); togglePause(); }
-});
-window.addEventListener('resize', () => { if(routeA && !follow) fitRoute(); });
-
-/* =================== INICIO =================== */
-initMap();
-updateTier();
-renderChips();
-syncInputs();
-if(flight && flight.start){
-  enterFlightMode();
-  toast('Vuelo en curso recuperado');
-} else {
-  if(flight && !flight.start){ flight=null; saveFlight(); }
-  renderPlan(); drawRoute();
-}
-</script>
+<script src="data.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -1,0 +1,901 @@
+/* ============================================================
+   VUELO PRIVADO · Lógica de la app
+   ============================================================ */
+'use strict';
+const PAX = { name:'GORKA CORBACHO MARTÍNEZ', alias:'COMANDANTE SUPREMO' };
+
+const AIRPORTS = AIRPORTS_RAW.map(a => ({ iata:a[0], city:a[1], name:a[2], cc:a[3], lat:a[4], lon:a[5], type:a[6]||'ap', note:a[7]||'' }));
+const AP = Object.fromEntries(AIRPORTS.map(a => [a.iata, a]));
+const ACF = Object.fromEntries(AIRCRAFT.map(a => [a.id, a]));
+const heliOnly = a => a.type==='hp' || a.type==='milh';
+const isMilAp = a => a.type==='mil' || a.type==='milh';
+
+const NAMES_M = ['Alejandro','Javier','Íñigo','Mikel','Álvaro','Sergio','Daniel','Jorge','Rafael','Unai','Pablo','Marcos','Diego','Hugo','Adrián','Asier','Fernando','Gonzalo','Ignacio','Rodrigo','Aitor','Martín'];
+const NAMES_F = ['Lucía','Carmen','Elena','Irene','Paula','Ane','Nerea','Marta','Sofía','Claudia','Laura','Alba','Leire','Valeria','Cristina','Julia','Noelia','Olivia','Amaia','Inés','Beatriz','Carlota'];
+const SURN = ['García','Fernández','Etxeberria','Aguirre','Navarro','Ortega','Castillo','Ibarra','Ruiz','Romero','Delgado','Zubiaurre','Molina','Herrera','Vidal','Sáez','Prieto','Arrieta','Montero','Salazar','Iglesias','Urquijo','Cortés','Mendoza','Lasarte','Belmonte','Olabarria','Valverde','Quintana','Echevarría'];
+const CATERING = ['jamón ibérico de bellota y pan de cristal','sushi omakase','ostras con champán','tabla de quesos curados','tortilla de patata recién hecha','pintxos donostiarras','caviar Beluga con blinis','fruta tropical cortada','croissants de mantequilla','solomillo con foie','ensalada de burrata','chocolates belgas'];
+const DRINKS = ['un café solo','un cappuccino','zumo de naranja natural','agua con gas y limón','un té matcha','un chocolate caliente','una limonada de la casa','un smoothie de frutos rojos'];
+const SKY = ['Despejado ☀️','Poco nuboso 🌤️','Nubes y claros ⛅','Brisa suave 🌬️'];
+const GATES = ['Pie de avión','Plataforma VIP 3','FBO · Stand 7','Hangar privado 2','Rampa ejecutiva 5'];
+const GATES_MIL = ['Sala de autoridades','Plataforma de Estado','Hangar VIP','Rampa de honores'];
+const STAMP_INKS = ['#9b2c2c','#1f4e8c','#2f6b3a','#6b2f7a','#8a5a12','#0f5f66'];
+
+const TIERS = [
+ { n:'Silver',h:0,c:'#c9ccd3' },{ n:'Gold',h:5,c:'#d4af6a' },{ n:'Platinum',h:20,c:'#e9e7e1' },{ n:'Black',h:50,c:'#1a1a1a' },{ n:'Infinite',h:100,c:'#9b7bff' },
+];
+const PHASES_JET = [
+ { to:.03,n:'Rodaje',i:'🛞' },{ to:.08,n:'Despegue',i:'🛫' },{ to:.20,n:'Ascenso',i:'↗️' },{ to:.82,n:'Crucero',i:'✈️' },{ to:.95,n:'Descenso',i:'↘️' },{ to:1.01,n:'Aproximación',i:'🛬' },
+];
+const PHASES_HELI = [
+ { to:.02,n:'Arranque de rotores',i:'🔄' },{ to:.04,n:'Despegue vertical',i:'🚁' },{ to:.10,n:'Ascenso',i:'↗️' },{ to:.90,n:'Crucero',i:'🚁' },{ to:.97,n:'Descenso',i:'↘️' },{ to:1.01,n:'Toma',i:'🛬' },
+];
+
+/* =================== UTILIDADES =================== */
+const $ = id => document.getElementById(id);
+const LS = { get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
+const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const flag = cc => String.fromCodePoint(...[...cc].map(c => 127397 + c.charCodeAt(0)));
+const fmtN = n => Math.round(n).toLocaleString('es-ES');
+const pad = n => String(n).padStart(2,'0');
+function fmtClock(ms){ ms=Math.max(0,ms); const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`; }
+function fmtHM(min){ min=Math.round(min); const h=Math.floor(min/60), m=min%60; return h ? `${h} h ${pad(m)} min` : `${m} min`; }
+function fmtTime(ts){ const d=new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtTimeTZ(ts, off){ if(off==null) return fmtTime(ts); const d=new Date(ts+off*1000); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; }
+function fmtUTC(off){ if(off==null) return ''; const h=off/3600; return 'UTC' + (h>=0?'+':'−') + (Math.abs(h)%1 ? Math.abs(h).toFixed(1) : Math.abs(h)); }
+function fmtDate(ts){ return new Date(ts).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase().replace('.',''); }
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const pick = (r,arr) => arr[Math.floor(r()*arr.length)];
+function hashStr(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+function distKm(a,b){ const R=6371, toR=Math.PI/180; const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR; const h=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function greeting(){ const h=new Date().getHours(); return h<6?'Buenas noches':h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches'; }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),3000); }
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+function person(r,g){ g = g || (r()<.5?'M':'F'); return `${pick(r, g==='M'?NAMES_M:NAMES_F)} ${pick(r,SURN)} ${pick(r,SURN)}`; }
+const typeIcon = a => AP_TYPES[a.type].icon;
+
+/* =================== CÁLCULO DE VUELO =================== */
+const maxStops = ac => ac.kind==='heli' ? 4 : 1;
+const stopsFor = (dist,ac) => Math.max(0, Math.ceil(dist/ac.range)-1);
+function feasible(ac,o,d){
+  if((heliOnly(o)||heliOnly(d)) && ac.kind!=='heli') return false;
+  return stopsFor(distKm(o,d),ac) <= maxStops(ac);
+}
+function flightMin(dist,ac){
+  const stops = stopsFor(dist,ac);
+  const base = ac.kind==='heli' ? dist/(ac.speed*0.9)*60 + 12 : dist/(ac.speed*0.92)*60 + 22;
+  return Math.max(ac.kind==='heli'?8:15, Math.round(base + stops*(ac.kind==='heli'?20:45)));
+}
+function cruiseAlt(dist,ac){
+  if(ac.kind==='heli') return dist<60 ? 1500 : dist<200 ? 2500 : 4500;
+  if(dist<400) return 28000; if(dist<900) return 37000;
+  return Math.min(ac.ceil, dist>5000 ? 47000 : 43000);
+}
+function bestAircraft(o,d,prefer){
+  const cur = ACF[prefer];
+  if(cur && feasible(cur,o,d)) return cur;
+  const list = AIRCRAFT.filter(a => feasible(a,o,d));
+  if(!list.length) return null;
+  // mismo tipo y misma "familia" (privado / Estado) si es posible
+  const same = list.filter(a => a.kind===(cur?.kind) && !!a.mil===!!cur?.mil);
+  const pool = same.length ? same : list.filter(a => a.kind===(cur?.kind)).length ? list.filter(a => a.kind===(cur?.kind)) : list;
+  return pool.sort((a,b) => stopsFor(distKm(o,d),a)-stopsFor(distKm(o,d),b) || a.range-b.range)[0];
+}
+
+/* =================== ESTADO =================== */
+const pref = LS.get('vp_pref', {});
+let S = {
+  origin: AP[pref.origin] ? pref.origin : 'MAD',
+  dest: AP[pref.dest] ? pref.dest : null,
+  ac: ACF[pref.ac] ? pref.ac : 'g700',
+  study: pref.study || 60,
+  breaks: pref.breaks ?? 50,
+};
+let flight = LS.get('vp_active', null);
+let log = LS.get('vp_log', []);
+let follow = false;
+const savePref = () => LS.set('vp_pref', S);
+const saveFlight = () => flight ? LS.set('vp_active', flight) : LS.del('vp_active');
+const saveLog = () => LS.set('vp_log', log);
+const acOf = f => ACF[f.ac] || AIRCRAFT[0];
+const phasesOf = f => acOf(f).kind==='heli' ? PHASES_HELI : PHASES_JET;
+
+/* =================== METEO Y HORA LOCAL (Open-Meteo, sin clave) =================== */
+function wmo(code, isDay){
+  if(code===0 || code===1) return isDay===0 ? (code===0?'Despejado 🌙':'Poco nuboso 🌙') : (code===0?'Despejado ☀️':'Poco nuboso 🌤️');
+  if(code===2) return 'Nubes y claros ⛅'; if(code===3) return 'Cubierto ☁️';
+  if(code===45||code===48) return 'Niebla 🌫️';
+  if(code>=51&&code<=57) return 'Llovizna 🌦️'; if(code>=61&&code<=67) return 'Lluvia 🌧️';
+  if(code>=71&&code<=77) return 'Nieve 🌨️'; if(code>=80&&code<=82) return 'Chubascos 🌦️';
+  if(code===85||code===86) return 'Chubascos de nieve 🌨️'; if(code>=95) return 'Tormenta ⛈️';
+  return 'Variable 🌤️';
+}
+async function fetchPlace(a){
+  const ctl = new AbortController(); const to = setTimeout(()=>ctl.abort(), 6000);
+  try{
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${a.lat}&longitude=${a.lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m&timezone=auto`;
+    const r = await fetch(u, { signal:ctl.signal }); const j = await r.json();
+    return { off:j.utc_offset_seconds, tz:j.timezone, t:Math.round(j.current.temperature_2m), sky:wmo(j.current.weather_code, j.current.is_day), wind:Math.round(j.current.wind_speed_10m) };
+  }catch(e){ return null; } finally{ clearTimeout(to); }
+}
+async function enrichFlight(f){
+  const [o,d] = await Promise.all([fetchPlace(AP[f.from]), fetchPlace(AP[f.to])]);
+  if(!flight || flight.id!==f.id) return;
+  if(o){ f.tzO=o.off; }
+  if(d){ f.tzD=d.off; f.tzName=d.tz; f.meteo={ t:d.t, sky:d.sky, wind:d.wind, live:true }; }
+  saveFlight();
+  if($('mPass').classList.contains('open') && $('bpCard')) $('bpHolder').innerHTML = passHTML(f);
+}
+
+/* =================== MAPA =================== */
+let map, airportLayer, routeLayer, historyLayer, nightLayer, planeMarker, flownLine, flownGlow, routeA, routeB;
+const hasLeaflet = typeof L !== 'undefined';
+function initMap(){
+  if(!hasLeaflet){ $('map').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#777">Mapa no disponible sin conexión</div>'; return; }
+  map = L.map('map', { zoomControl:false, worldCopyJump:true, minZoom:2, attributionControl:true }).setView([40,-3], 4);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution:'Tiles &copy; Esri', maxZoom:13 }).addTo(map);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom:13, opacity:.75 }).addTo(map);
+  L.control.zoom({ position:'bottomright' }).addTo(map);
+  nightLayer = L.layerGroup().addTo(map);
+  historyLayer = L.layerGroup().addTo(map);
+  airportLayer = L.layerGroup().addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+  AIRPORTS.forEach(a => {
+    const t = AP_TYPES[a.type];
+    const m = L.circleMarker([a.lat,a.lon], { radius:t.r, color:t.color, weight:1, fillColor:t.color, fillOpacity:.6, opacity:.7 });
+    m.bindPopup(`<div style="font-weight:700">${flag(a.cc)} ${t.icon} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}${a.note?'<br>'+a.note:''}<br><i>${t.label}${heliOnly(a)?' · solo helicópteros':''}</i></div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>`);
+    airportLayer.addLayer(m);
+  });
+  map.on('dragstart', () => { if(follow){ follow=false; $('bFollow').classList.remove('on'); } });
+  drawNight(); setInterval(drawNight, 5*60000);
+}
+/* --- terminador día/noche --- */
+function solarPos(date){
+  const rad=Math.PI/180, jd=date/86400000+2440587.5, n=jd-2451545.0;
+  const Lm=(280.460+0.9856474*n)%360, g=((357.528+0.9856003*n)%360)*rad;
+  const lam=(Lm+1.915*Math.sin(g)+0.02*Math.sin(2*g))*rad, eps=(23.439-0.0000004*n)*rad;
+  const alpha=Math.atan2(Math.cos(eps)*Math.sin(lam),Math.cos(lam))/rad, delta=Math.asin(Math.sin(eps)*Math.sin(lam))/rad;
+  const gmst=((18.697374558+24.06570982441908*n)%24+24)%24;
+  return { alpha, delta, gmst };
+}
+function nightRing(date, shift){
+  const { alpha, delta, gmst } = solarPos(date), rad=Math.PI/180, pts=[];
+  for(let lng=-180; lng<=180; lng+=2){
+    const ha=gmst*15+lng-alpha;
+    pts.push([Math.atan(-Math.cos(ha*rad)/Math.tan(delta*rad))/rad, lng+shift]);
+  }
+  const pole = delta<0 ? 85 : -85;
+  return [[pole,-180+shift], ...pts, [pole,180+shift]];
+}
+function drawNight(){
+  if(!map) return; nightLayer.clearLayers();
+  const now=Date.now();
+  [-360,0,360].forEach(sh => nightLayer.addLayer(L.polygon(nightRing(now,sh), { stroke:false, fillColor:'#000814', fillOpacity:.38, interactive:false })));
+}
+/* --- rutas voladas --- */
+function drawHistory(){
+  if(!map) return; historyLayer.clearLayers();
+  if(flight && flight.start) return;
+  const seen=new Set();
+  log.forEach(e => {
+    const k=e.from+'-'+e.to; if(seen.has(k) || !AP[e.from] || !AP[e.to]) return; seen.add(k);
+    const [a,b]=routeLatLngs(AP[e.from],AP[e.to]);
+    historyLayer.addLayer(L.polyline([a,b], { color:e.status==='ok'?'#d4af6a':'#ef7f7f', weight:1.4, opacity:.35, interactive:false }));
+  });
+}
+function routeLatLngs(o,d){ let dl=d.lon; const diff=dl-o.lon; if(diff>180) dl-=360; else if(diff<-180) dl+=360; return [L.latLng(o.lat,o.lon), L.latLng(d.lat,dl)]; }
+function posAt(p){ const pa=map.project(routeA,0), pb=map.project(routeB,0); return map.unproject(pa.add(pb.subtract(pa).multiplyBy(p)),0); }
+function apIcon(a,tag){ return L.divIcon({ className:'ap-label', iconSize:[0,0], html:`<div class="ap-pin ${isMilAp(a)?'mil':heliOnly(a)?'hp':''}"></div><div class="ap-tag"><small>${tag}</small><b>${a.iata}</b> · ${a.city}</div>` }); }
+function vehicleHTML(kind){
+  const pa=map.project(routeA,0), pb=map.project(routeB,0);
+  const ang=Math.atan2(pb.y-pa.y,pb.x-pa.x)*180/Math.PI;
+  if(kind==='heli'){ // 🚁 mira a la izquierda: se voltea si va hacia el este
+    const east = pb.x >= pa.x;
+    const tilt = Math.max(-25, Math.min(25, east ? ang : -(ang>0?180-ang:-180-ang)));
+    return `<div style="transform:${east?'scaleX(-1) ':''}rotate(${east?-tilt:tilt}deg)">🚁</div>`;
+  }
+  return `<div style="transform:rotate(${ang+45}deg)">✈️</div>`; // ✈️ apunta al noreste
+}
+function drawRoute(fit=true){
+  if(!map) return;
+  routeLayer.clearLayers(); planeMarker=null; flownLine=null; flownGlow=null;
+  const o=AP[S.origin], d=AP[S.dest];
+  drawHistory();
+  if(!o) return;
+  if(!d){ routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')})); if(fit) map.flyTo([o.lat,o.lon],5,{duration:.8}); return; }
+  [routeA, routeB] = routeLatLngs(o,d);
+  routeLayer.addLayer(L.polyline([routeA,routeB], { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
+  flownGlow = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:10, opacity:.18, lineCap:'round' });
+  flownLine = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:3.5, opacity:1 });
+  routeLayer.addLayer(flownGlow); routeLayer.addLayer(flownLine);
+  routeLayer.addLayer(L.marker(routeA,{icon:apIcon(o,'Origen')}));
+  routeLayer.addLayer(L.marker(routeB,{icon:apIcon(d,'Destino')}));
+  const kind = (flight && flight.start ? acOf(flight) : ACF[S.ac]).kind;
+  planeMarker = L.marker(routeA, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:vehicleHTML(kind) }) });
+  routeLayer.addLayer(planeMarker);
+  if(fit) fitRoute();
+}
+function fitRoute(){
+  if(!map || !routeA) return;
+  const small = window.innerWidth < 820;
+  const pd = flight && flight.start
+    ? { paddingTopLeft:[40,small?200:140], paddingBottomRight:[40,small?300:230] }
+    : { paddingTopLeft:[small?40:460,110], paddingBottomRight:[60,small?(window.innerHeight*.6):60] };
+  map.fitBounds(L.latLngBounds([routeA,routeB]), { ...pd, maxZoom:9 });
+}
+function updatePlane(p){
+  if(!map || !planeMarker) return;
+  const pos = posAt(p);
+  planeMarker.setLatLng(pos); flownLine.setLatLngs([routeA,pos]); flownGlow.setLatLngs([routeA,pos]);
+  if(follow) map.panTo(pos, { animate:true, duration:.8 });
+}
+
+/* =================== PLANIFICADOR =================== */
+function setupCombo(inp, list, key){
+  let active=-1, items=[];
+  const render = () => {
+    const q = norm(inp.value.trim());
+    items = AIRPORTS.filter(a => !q || norm(`${a.iata} ${a.city} ${a.name} ${COUNTRIES[a.cc]||''} ${AP_TYPES[a.type].label} ${a.note}`).includes(q)).slice(0,60);
+    list.innerHTML = items.map((a,i) => `<div class="opt${i===active?' active':''}" data-i="${a.iata}">${flag(a.cc)} <b>${a.iata}</b> <span>${typeIcon(a)} ${a.city}</span> <small>${a.name}</small></div>`).join('') || '<div class="opt" style="color:var(--muted)">Sin resultados</div>';
+    list.hidden = false;
+  };
+  inp.addEventListener('focus', () => { inp.select(); active=-1; render(); });
+  inp.addEventListener('input', () => { active=0; render(); });
+  inp.addEventListener('keydown', e => {
+    if(list.hidden) return;
+    if(e.key==='ArrowDown'){ active=Math.min(items.length-1,active+1); render(); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ active=Math.max(0,active-1); render(); e.preventDefault(); }
+    else if(e.key==='Enter' && items[Math.max(0,active)]){ pickAirport(key, items[Math.max(0,active)].iata); inp.blur(); }
+    else if(e.key==='Escape') inp.blur();
+  });
+  list.addEventListener('mousedown', e => { const o=e.target.closest('.opt[data-i]'); if(o){ e.preventDefault(); pickAirport(key,o.dataset.i); inp.blur(); } });
+  inp.addEventListener('blur', () => setTimeout(() => { list.hidden=true; syncInputs(); }, 120));
+}
+function syncInputs(){
+  const o=AP[S.origin], d=AP[S.dest];
+  $('inOrigin').value = o ? `${o.iata} · ${o.city}` : '';
+  $('inDest').value = d ? `${d.iata} · ${d.city}` : '';
+}
+window.pickAirport = function(key, iata){
+  if(flight && flight.start) return;
+  if(key==='origin' && iata===S.dest) S.dest=S.origin;
+  if(key==='dest' && iata===S.origin){ toast('El destino debe ser distinto del origen'); return; }
+  S[key]=iata;
+  if(map) map.closePopup();
+  ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute();
+};
+function ensureAircraft(){
+  if(!S.dest) { if(heliOnly(AP[S.origin]) && ACF[S.ac].kind!=='heli'){ S.ac = AIRCRAFT.find(a=>a.kind==='heli' && !!a.mil===!!ACF[S.ac].mil)?.id || 'h145'; } return; }
+  const o=AP[S.origin], d=AP[S.dest];
+  if(!feasible(ACF[S.ac],o,d)){
+    const b=bestAircraft(o,d,S.ac);
+    if(b){ S.ac=b.id; toast(`${heliOnly(o)||heliOnly(d)?'Helipuerto: solo helicópteros.':'Autonomía insuficiente.'} Asignamos un ${b.short}`); }
+  }
+}
+function renderAircraftSelect(){
+  const o=AP[S.origin], d=AP[S.dest];
+  const groups=[...new Set(AIRCRAFT.map(a=>a.group))];
+  $('selAc').innerHTML = groups.map(g => `<optgroup label="${g}">` + AIRCRAFT.filter(a=>a.group===g).map(a => {
+    const ok = d ? feasible(a,o,d) : !(heliOnly(o) && a.kind!=='heli');
+    const why = !ok ? ((heliOnly(o)||(d&&heliOnly(d))) && a.kind!=='heli' ? ' (no aterriza en helipuerto)' : ' (sin autonomía)') : '';
+    return `<option value="${a.id}" ${a.id===S.ac?'selected':''} ${ok?'':'disabled'}>${a.kind==='heli'?'🚁':'✈️'} ${a.name} · ${fmtN(a.range)} km${why}</option>`;
+  }).join('') + '</optgroup>').join('');
+}
+function renderPlan(){
+  $('greet').innerHTML = `${greeting()}, <em>Comandante Supremo</em>.`;
+  renderAircraftSelect();
+  const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
+  if(!d){
+    $('summary').innerHTML = `<div class="note" style="margin:0">Elija un destino en el buscador, toque un punto del mapa o pida una sugerencia según su tiempo de estudio.</div>`;
+    $('btnBook').disabled = true;
+  } else {
+    const dist=distKm(o,d), mins=flightMin(dist,ac), alt=cruiseAlt(dist,ac), stops=stopsFor(dist,ac);
+    const blocks = Math.floor(mins/30);
+    $('summary').innerHTML = `
+      <div class="sum-route">
+        <div><div class="sum-iata">${o.iata}</div><div class="sum-city">${flag(o.cc)} ${typeIcon(o)} ${o.city}</div></div>
+        <div class="sum-mid"><span>${ac.kind==='heli'?'🚁':'✈'}</span></div>
+        <div style="text-align:right"><div class="sum-iata">${d.iata}</div><div class="sum-city">${d.city} ${typeIcon(d)} ${flag(d.cc)}</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">Distancia</div><div class="v">${fmtN(dist)} km</div></div>
+        <div class="stat"><div class="k">Tiempo vuelo</div><div class="v">${fmtHM(mins)}</div></div>
+        <div class="stat"><div class="k">Crucero</div><div class="v">${ac.kind==='heli'?fmtN(alt)+' ft':'FL'+alt/100}</div></div>
+      </div>
+      <div class="note">${ac.name} a ${fmtN(ac.speed)} km/h${ac.unit?` · <b>${ac.unit}</b>`:''}.${stops?` <b>${stops} escala${stops>1?'s':''} técnica${stops>1?'s':''}</b> de repostaje incluida${stops>1?'s':''}.`:''} Llegada estimada a las <b>${fmtTime(Date.now()+mins*60000)}</b> si despega ahora${blocks?` · <b>${blocks} bloque${blocks>1?'s':''} de 25+5</b>`:''}.</div>
+      ${d.note?`<div class="note">${typeIcon(d)} ${d.note}</div>`:''}`;
+    $('btnBook').disabled = false;
+  }
+  renderSuggestions();
+}
+function renderChips(){
+  const opts=[25,45,60,90,120,180,240];
+  $('chips').innerHTML = opts.map(m => `<button class="chip${S.study===m?' on':''}" data-m="${m}">${m<60?m+' min':(m/60)+' h'}</button>`).join('')
+    + `<input class="chip-inp" id="studyCustom" type="number" min="5" max="1200" placeholder="min" value="${opts.includes(S.study)?'':S.study}">`;
+  $('breakChips').innerHTML = [[0,'Sin descansos'],[25,'25 + 5 min'],[50,'50 + 10 min']].map(([v,l]) => `<button class="chip${S.breaks===v?' on':''}" data-b="${v}">${v?'☕ ':''}${l}</button>`).join('');
+}
+function renderSuggestions(){
+  const o=AP[S.origin]; $('suggFrom').textContent = `${o.city} (${o.iata})`;
+  const cur=ACF[S.ac];
+  const list = AIRPORTS.filter(a => a.iata!==o.iata).map(a => {
+    const ac = feasible(cur,o,a) ? cur : null;
+    if(!ac) return null;
+    const dist=distKm(o,a); return { a, dist, mins:flightMin(dist,ac) };
+  }).filter(Boolean).sort((x,y) => Math.abs(x.mins-S.study)-Math.abs(y.mins-S.study)).slice(0,6);
+  $('sugg').innerHTML = list.length ? list.map(x => `<button class="sugg-item" data-i="${x.a.iata}"><span class="fl">${flag(x.a.cc)}</span><span class="nm">${typeIcon(x.a)} ${x.a.city}<small>${x.a.iata} · ${x.a.name} · ${fmtN(x.dist)} km</small></span><span class="tm">${fmtHM(x.mins)}</span></button>`).join('')
+    : `<div class="note">Con el ${cur.short} no hay destinos alcanzables desde aquí. Pruebe otra aeronave.</div>`;
+}
+
+/* =================== VUELO =================== */
+function createFlight(){
+  const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
+  const dist=distKm(o,d), mins=flightMin(dist,ac);
+  const r = mulberry32((Date.now() ^ Math.floor(Math.random()*1e9)) >>> 0);
+  const L3 = () => Array.from({length:3},()=>String.fromCharCode(65+Math.floor(r()*26))).join('');
+  const baseT = 27 - Math.abs(d.lat)*0.38;
+  const mil = !!ac.mil;
+  return {
+    id:'F'+Date.now(),
+    flightNo: (mil?'AME ':'VP ') + (100+Math.floor(r()*9800)),
+    callsign: 'SUPREMO ' + pad(1+Math.floor(r()*98)),
+    reg: ac.reg ? ac.reg(r) : (ac.kind==='heli' ? 'EC-H' + L3().slice(0,2) : 'EC-' + L3()),
+    from:o.iata, to:d.iata, ac:ac.id, dist, mins, durMs:mins*60000, alt:cruiseAlt(dist,ac), stops:stopsFor(dist,ac),
+    crew: { captain:person(r), fo:person(r), fa:person(r,'F'), rk: mil ? { c:'Cte.', f:'Cap.', a:'Sgto.' } : null },
+    catering:pick(r,CATERING), drink:pick(r,DRINKS), gate: mil||isMilAp(o) ? pick(r,GATES_MIL) : heliOnly(o) ? 'Plataforma del helipuerto' : pick(r,GATES),
+    runway: pad(1+Math.floor(r()*36)) + pick(r,['L','R','C','']),
+    meteo: { t:Math.round(baseT + (r()*8-4)), sky:pick(r,SKY), live:false },
+    tzO:null, tzD:null,
+    breakEvery:S.breaks, breakLen: S.breaks===25 ? 5 : 10,
+    booked:Date.now(), start:null, pausedTotal:0, pausedAt:null, breakUntil:null, nextBreak:null,
+    said:{}, nextMsg:0, msgs:[], msgIdx:Math.floor(r()*10),
+  };
+}
+const elapsedMs = f => !f.start ? 0 : ((f.pausedAt || Date.now()) - f.start - f.pausedTotal);
+function tierFor(hours){ let t=TIERS[0]; for(const x of TIERS) if(hours>=x.h) t=x; return t; }
+function totals(){ const min=log.reduce((s,e)=>s+(e.studyMin||0),0); return { flights:log.length, hours:min/60, km:log.reduce((s,e)=>s+(e.km||0),0), dests:new Set(log.filter(e=>e.status==='ok').map(e=>e.to)).size }; }
+
+function barcodeSVG(seed){
+  const r=mulberry32(seed); let x=0, out='';
+  while(x<196){ const w=1+Math.floor(r()*3.2); if(r()>.38) out+=`<rect x="${x}" y="0" width="${w}" height="58" fill="#1d1a14"/>`; x+=w+(r()>.6?1:0); }
+  return `<svg viewBox="0 0 196 58" preserveAspectRatio="none">${out}</svg>`;
+}
+const LOGO_SVG = `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#d4af6a" stroke-width="2"/><path d="M14 36 L50 22 L46 28 L30 34 L26 44 L22 44 L24 35 Z" fill="#f1d9a4"/></svg>`;
+
+function passHTML(f){
+  const o=AP[f.from], d=AP[f.to], ac=acOf(f), mil=!!ac.mil, heli=ac.kind==='heli';
+  const dep = f.start || f.booked, arr = dep + f.durMs;
+  const tier = tierFor(totals().hours);
+  const code = `${f.flightNo.replace(' ','')}${f.from}${f.to}${new Date(dep).getDate()}`;
+  const rk = f.crew.rk || { c:'', f:'', a:'' };
+  const terminal = isMilAp(o) ? 'Base militar' : heliOnly(o) ? 'Helipuerto' : 'FBO Ejecutivo';
+  const altTxt = heli ? fmtN(f.alt)+' ft' : 'FL'+(f.alt/100);
+  return `<div class="bp${mil?' bp-mil':''}" id="bpCard">
+   <div class="bp-main">
+    <div class="bp-head">
+      <div class="bp-brand">${LOGO_SVG}<div><div class="n">VUELO PRIVADO</div><div class="s">${mil?'REINO DE ESPAÑA · TRANSPORTE DE ESTADO':'PRIVATE AVIATION'}</div></div></div>
+      <div class="bp-type">${heli?'TARJETA DE EMBARQUE · HELICÓPTERO':'TARJETA DE EMBARQUE'}<b>${mil?'STATE FLIGHT BOARDING PASS':'PRIVATE BOARDING PASS'}</b></div>
+    </div>
+    <div class="bp-body">
+      <div class="bp-pax">
+        <div><div class="bp-k">Pasajero · Passenger</div><div class="name">${PAX.name}</div><div class="alias">«${PAX.alias}» · CLUB ${tier.n.toUpperCase()}</div></div>
+        <div class="bp-vip">${mil?'★ AUTORIDAD · MÁXIMA PRIORIDAD':'★ ÚNICO PASAJERO'}</div>
+      </div>
+      <div class="bp-route">
+        <div><div class="bp-k">Desde</div><div class="iata">${o.iata}</div><div class="city">${o.city}, ${COUNTRIES[o.cc]}</div></div>
+        <div class="bp-mid"><div class="ln"><span>${heli?'🚁':'✈'}</span></div><div class="d">${fmtN(f.dist)} km · ${fmtHM(f.mins)}${f.stops?` · ${f.stops} escala${f.stops>1?'s':''}`:''}</div></div>
+        <div class="end"><div class="bp-k">Hacia</div><div class="iata">${d.iata}</div><div class="city">${d.city}, ${COUNTRIES[d.cc]}</div></div>
+      </div>
+      <div class="bp-grid">
+        <div><div class="bp-k">Vuelo</div><div class="bp-v mono">${f.flightNo}</div></div>
+        <div><div class="bp-k">Fecha</div><div class="bp-v mono">${fmtDate(dep)}</div></div>
+        <div><div class="bp-k">Salida (local)</div><div class="bp-v mono">${fmtTimeTZ(dep,f.tzO)}</div></div>
+        <div><div class="bp-k">Llegada (local)</div><div class="bp-v mono">${fmtTimeTZ(arr,f.tzD)} <small style="font-size:9px;color:#8a7f69">${fmtUTC(f.tzD)}</small></div></div>
+        <div><div class="bp-k">Terminal</div><div class="bp-v">${terminal}</div></div>
+        <div><div class="bp-k">Puerta</div><div class="bp-v">${f.gate}</div></div>
+        <div><div class="bp-k">Asiento</div><div class="bp-v">Toda la cabina</div></div>
+        <div><div class="bp-k">Clase</div><div class="bp-v">${mil?'Estado · VIP':'Privado · VIP'}</div></div>
+        <div><div class="bp-k">${heli?'Helicóptero':'Aeronave'}</div><div class="bp-v">${ac.short}</div></div>
+        <div><div class="bp-k">${mil?'Matrícula militar':'Matrícula'}</div><div class="bp-v mono" style="font-size:12.5px">${f.reg}</div></div>
+        <div><div class="bp-k">Indicativo</div><div class="bp-v mono">${f.callsign}</div></div>
+        <div><div class="bp-k">${heli?'Altitud crucero':'Nivel crucero'}</div><div class="bp-v mono">${altTxt}</div></div>
+      </div>
+      ${mil?`<div class="bp-unit">🎖️ ${ac.unit} · ${ac.cat}</div>`:''}
+      <div class="bp-crew">
+        <div><div class="bp-k">Comandante</div><div class="bp-v">${rk.c?rk.c+' ':''}${f.crew.captain}</div></div>
+        <div><div class="bp-k">${heli?'Copiloto':'Primer oficial'}</div><div class="bp-v">${rk.f?rk.f+' ':''}${f.crew.fo}</div></div>
+        <div><div class="bp-k">Azafata · TCP</div><div class="bp-v">${rk.a?rk.a+' ':''}${f.crew.fa}</div></div>
+      </div>
+      <div class="bp-foot">
+        <div>Catering a bordo: <b>${f.catering}</b></div>
+        <div style="text-align:right">Meteo en ${d.city}${f.meteo.live?' (en vivo)':'*'}: <b>${f.meteo.t}°C · ${f.meteo.sky}</b></div>
+      </div>
+    </div>
+   </div>
+   <div class="bp-stub">
+     <div class="bp-stub-head">VUELO PRIVADO</div>
+     <div class="bp-stub-body">
+       <div><div class="bp-k">Pasajero</div><div class="bp-v" style="font-size:12.5px">G. CORBACHO MARTÍNEZ</div></div>
+       <div class="r2" style="${(o.iata+d.iata).length>6?'font-size:23px':''}">${o.iata} → ${d.iata}</div>
+       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+         <div><div class="bp-k">Vuelo</div><div class="bp-v mono">${f.flightNo}</div></div>
+         <div><div class="bp-k">Salida</div><div class="bp-v mono">${fmtTimeTZ(dep,f.tzO)}</div></div>
+         <div><div class="bp-k">Asiento</div><div class="bp-v">1A ★</div></div>
+         <div><div class="bp-k">Embarque</div><div class="bp-v">A su ritmo</div></div>
+       </div>
+       <div class="bp-bar">${barcodeSVG(hashStr(code))}<div class="code">${code}</div></div>
+     </div>
+   </div>
+  </div>`;
+}
+
+function openModal(id){ $(id).classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target===m || e.target.hasAttribute('data-close')) { if(m.id!=='mConfirm') closeModal(m.id); } }));
+
+function showPass(f, mode){
+  $('bpHolder').innerHTML = passHTML(f);
+  const acts = $('mPassActions');
+  if(mode==='book'){
+    $('mPassTitle').textContent = 'Tarjeta de embarque emitida';
+    $('mPassSub').textContent = `${f.crew.captain} y su tripulación le esperan a pie de ${acOf(f).kind==='heli'?'helicóptero':'avión'}.`;
+    acts.innerHTML = `<button class="btn btn-ghost" id="pCancel">Cancelar</button><button class="btn btn-ghost" id="pDl">⬇️ Descargar</button><button class="btn btn-gold" id="pBoard">${acOf(f).kind==='heli'?'🚁':'✈️'} Embarcar y despegar</button>`;
+    $('pCancel').onclick = () => { closeModal('mPass'); flight=null; saveFlight(); };
+    $('pBoard').onclick = () => { closeModal('mPass'); board(); };
+  } else {
+    $('mPassTitle').textContent = 'Tarjeta de embarque';
+    $('mPassSub').textContent = `${f.flightNo} · ${AP[f.from]?.city} → ${AP[f.to]?.city}`;
+    acts.innerHTML = `<button class="btn btn-ghost" data-close>Cerrar</button><button class="btn btn-gold" id="pDl">⬇️ Descargar</button>`;
+  }
+  $('pDl').onclick = () => downloadPass(f);
+  openModal('mPass');
+}
+async function downloadPass(f){
+  try{
+    if(!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+    const el=$('bpCard'); el.style.setProperty('--notch','#f7f2e6');
+    const c = await html2canvas(el, { backgroundColor:null, scale:2, useCORS:true });
+    el.style.removeProperty('--notch');
+    const a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download=`tarjeta-${f.flightNo.replace(' ','')}-${f.from}-${f.to}.png`; a.click();
+    toast('Tarjeta descargada');
+  }catch(e){ toast('No se pudo generar la imagen. Puede hacer captura de pantalla.'); }
+}
+
+/* =================== AUDIO =================== */
+let actx=null, master=null, noise=null, ambTimer=null;
+let vol = LS.get('vp_vol', 0.5);
+function audio(){
+  try{
+    if(!actx){ actx=new (window.AudioContext||window.webkitAudioContext)(); master=actx.createGain(); master.gain.value=vol; master.connect(actx.destination); }
+    if(actx.state==='suspended') actx.resume();
+  }catch(e){}
+  return actx;
+}
+function setVolume(v){ vol=v; LS.set('vp_vol',v); if(master) master.gain.setTargetAtTime(v, actx.currentTime, .15); }
+function tone(fq, t0, dur, peak, type='sine'){
+  const c=actx, o=c.createOscillator(), g=c.createGain();
+  o.type=type; o.frequency.value=fq; const t=c.currentTime+t0;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+.015); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t+dur+.05);
+}
+function chime(){ if(!audio()) return; tone(659.25,0,1.6,.10); tone(523.25,.55,1.9,.10); }
+const CABIN_SOUNDS = {
+  seatbelt(){ tone(1046.5,0,2.2,.045); tone(2093,0,1.2,.008); },
+  call(){ tone(1318.5,0,.9,.035); tone(1318.5,.35,1.1,.035); },
+  lowDing(){ tone(587.3,0,2.4,.05); },
+  interphone(){ tone(880,0,.35,.03); tone(880,.18,.35,.03); tone(880,.36,.5,.03); },
+  click(){
+    const c=actx, len=c.sampleRate*.06, buf=c.createBuffer(1,len,c.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
+    const src=c.createBufferSource(); src.buffer=buf; const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; const g=c.createGain(); g.gain.value=.06;
+    src.connect(bp).connect(g).connect(master); src.start();
+  },
+  radio(){ // ráfaga corta de radio (helicóptero)
+    const c=actx, len=c.sampleRate*.5, buf=c.createBuffer(1,len,c.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(i<len*.08?i/(len*.08):1)*(1-i/len);
+    const src=c.createBufferSource(); src.buffer=buf; const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2200; bp.Q.value=3; const g=c.createGain(); g.gain.value=.03;
+    src.connect(bp).connect(g).connect(master); src.start(); setTimeout(()=>CABIN_SOUNDS.click(), 520);
+  },
+};
+let noiseKind='jet';
+function scheduleAmbient(){
+  clearTimeout(ambTimer);
+  ambTimer = setTimeout(() => {
+    if(noise && actx && actx.state==='running' && !(flight && flight.pausedAt)){
+      const keys = noiseKind==='heli' ? ['radio','click','interphone','radio'] : ['seatbelt','call','lowDing','interphone','click','seatbelt','lowDing'];
+      CABIN_SOUNDS[keys[Math.floor(Math.random()*keys.length)]]();
+    }
+    scheduleAmbient();
+  }, (75 + Math.random()*165) * 1000);
+}
+function brownBuffer(c, secs){
+  const len=c.sampleRate*secs, buf=c.createBuffer(2,len,c.sampleRate);
+  for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch); let last=0; for(let i=0;i<len;i++){ const w=Math.random()*2-1; last=(last+0.02*w)/1.02; d[i]=last*3.2; } }
+  return buf;
+}
+function buildJetSound(c, out){
+  const buf=brownBuffer(c,8), nodes=[];
+  const src=c.createBufferSource(); src.buffer=buf; src.loop=true;
+  const lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420; lp.Q.value=.4;
+  const airG=c.createGain(); airG.gain.value=.55;
+  const lfo=c.createOscillator(), lfoG=c.createGain(); lfo.frequency.value=.05; lfoG.gain.value=90; lfo.connect(lfoG).connect(lp.frequency);
+  src.connect(lp).connect(airG).connect(out);
+  const hum=c.createBiquadFilter(); hum.type='lowpass'; hum.frequency.value=160;
+  const humG=c.createGain(); humG.gain.value=.05;
+  const o1=c.createOscillator(), o2=c.createOscillator(), o3=c.createOscillator(), o3g=c.createGain();
+  o1.type='sawtooth'; o1.frequency.value=72; o2.type='sawtooth'; o2.frequency.value=72.6; o3.type='sine'; o3.frequency.value=144.3; o3g.gain.value=.4;
+  o1.connect(hum); o2.connect(hum); o3.connect(o3g).connect(hum); hum.connect(humG).connect(out);
+  const src2=c.createBufferSource(); src2.buffer=buf; src2.loop=true; src2.playbackRate.value=1.7;
+  const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2400; bp.Q.value=.6;
+  const hissG=c.createGain(); hissG.gain.value=.012;
+  src2.connect(bp).connect(hissG).connect(out);
+  nodes.push(src,src2,lfo,o1,o2,o3); nodes.forEach(n=>n.start()); return nodes;
+}
+function buildHeliSound(c, out){
+  const nodes=[];
+  // palas del rotor: ciclo de "golpes" a ~5,6 Hz
+  const per=1/5.6, n=Math.floor(c.sampleRate*per*4), rb=c.createBuffer(1,n,c.sampleRate), d=rb.getChannelData(0);
+  let last=0;
+  for(let i=0;i<n;i++){
+    const t=(i/c.sampleRate)%per, env=Math.exp(-t/0.04)*0.95+0.10;
+    const w=Math.random()*2-1; last=(last+0.06*w)/1.06; d[i]=last*7*env;
+  }
+  const rotor=c.createBufferSource(); rotor.buffer=rb; rotor.loop=true;
+  const rlp=c.createBiquadFilter(); rlp.type='lowpass'; rlp.frequency.value=320;
+  const rG=c.createGain(); rG.gain.value=.55;
+  const wob=c.createOscillator(), wobG=c.createGain(); wob.frequency.value=.07; wobG.gain.value=.012; wob.connect(wobG).connect(rotor.playbackRate);
+  rotor.connect(rlp).connect(rG).connect(out);
+  // rumor de cabina
+  const buf=brownBuffer(c,6), air=c.createBufferSource(); air.buffer=buf; air.loop=true;
+  const alp=c.createBiquadFilter(); alp.type='lowpass'; alp.frequency.value=380; const aG=c.createGain(); aG.gain.value=.35;
+  air.connect(alp).connect(aG).connect(out);
+  // silbido de la turbina
+  const t1=c.createOscillator(), t2=c.createOscillator(), tG=c.createGain(); t1.frequency.value=1870; t2.frequency.value=3745; tG.gain.value=.0045;
+  const vib=c.createOscillator(), vibG=c.createGain(); vib.frequency.value=.3; vibG.gain.value=6; vib.connect(vibG).connect(t1.frequency);
+  t1.connect(tG); t2.connect(tG); tG.connect(out);
+  nodes.push(rotor,wob,air,t1,t2,vib); nodes.forEach(x=>x.start()); return nodes;
+}
+function setNoise(on, persist=true){
+  const c=audio(); if(!c) return;
+  const btn=$('bNoise');
+  if(!on){
+    if(noise){ const n=noise; n.g.gain.setTargetAtTime(0,c.currentTime,.6); setTimeout(()=>{ n.nodes.forEach(x=>{ try{x.stop();}catch(e){} }); },2500); noise=null; }
+    clearTimeout(ambTimer);
+    btn.classList.remove('on'); btn.textContent='🔈 Sonido de cabina'; if(persist) LS.set('vp_noise',false); return;
+  }
+  if(noise) return;
+  noiseKind = flight ? acOf(flight).kind : ACF[S.ac].kind;
+  const g=c.createGain(); g.gain.value=0; g.connect(master);
+  const nodes = noiseKind==='heli' ? buildHeliSound(c,g) : buildJetSound(c,g);
+  g.gain.setTargetAtTime(.9,c.currentTime,1.5);
+  noise={ g, nodes }; scheduleAmbient();
+  btn.classList.add('on'); btn.textContent='🔊 Sonido de cabina'; if(persist) LS.set('vp_noise',true);
+}
+document.addEventListener('pointerdown', () => { if(flight && flight.start && !noise && LS.get('vp_noise',true)) setNoise(true); else audio(); }, { once:true });
+
+/* =================== MEGAFONÍA =================== */
+function say(who, text, sound=true){
+  if(!flight) return;
+  const heli = acOf(flight).kind==='heli';
+  const roles = { cap:['Comandante',flight.crew.captain], fo:[heli?'Copiloto':'Primer oficial',flight.crew.fo], fa:['Azafata',flight.crew.fa] };
+  const [role,name] = roles[who];
+  flight.msgs.unshift({ who:`${role} ${name.split(' ')[0]}`, text, t:Date.now() });
+  flight.msgs = flight.msgs.slice(0,6);
+  saveFlight(); renderPA();
+  if(sound) chime();
+}
+function renderPA(){ if(!flight) return; $('paList').innerHTML = flight.msgs.slice(0,4).map(m => `<div class="msg"><div class="who">${m.who}<span>${fmtTime(m.t)}</span></div>${m.text}</div>`).join(''); }
+function phaseIdx(p, f){ return phasesOf(f).findIndex(x => p < x.to); }
+function announcements(p, el){
+  const f=flight, d=AP[f.to], o=AP[f.from], ac=acOf(f), s=f.said, heli=ac.kind==='heli', mil=!!ac.mil;
+  const once = (k, fn) => { if(!s[k]){ s[k]=1; fn(); } };
+  const pi = phaseIdx(p,f);
+  const veh = heli ? 'helicóptero' : 'avión';
+  if(pi>=0) once('p0', () => say('cap', `Buenas, Comandante Supremo. Le habla ${f.crew.captain}, su comandante. Junto a ${f.crew.fo} y ${f.crew.fa} le damos la bienvenida a bordo de este ${ac.name}${mil?`, del ${ac.unit}`:''}. ${f.flightNo} a ${d.city}: ${fmtHM(f.mins)} de concentración por delante.`));
+  if(pi>=1) once('p1', () => say('fo', heli ? `Rotores en régimen. ${isMilAp(o)?'Control de la base':'Torre'} nos autoriza el despegue. Allá vamos, Comandante Supremo.` : `Torre de ${o.city} nos autoriza a despegar por la pista ${f.runway}. Potencia de despegue… allá vamos.`));
+  if(pi>=2) once('p2', () => say('fa', `Comandante Supremo, en cuanto nos estabilicemos le sirvo ${f.drink}. Ponga el móvil en modo avión, que aquí se viene a estudiar.`));
+  if(pi>=3) once('p3', () => say('cap', heli ? `Volamos a ${fmtN(f.alt)} pies sobre el terreno. Vuelo tranquilo: momento perfecto para concentrarse.` : `Hemos alcanzado nuestro nivel de crucero, FL${f.alt/100}. Cielo tranquilo: momento perfecto para concentrarse.`));
+  if(p>=.5) once('half', () => say('cap', `Hemos superado la mitad del trayecto. Lleva ${fmtHM(el/60000)} de estudio; quedan ${fmtHM((f.durMs-el)/60000)}. Excelente ritmo.`));
+  if(f.stops && p>=.45) once('stop', () => say('fo', `Escala técnica de repostaje completada. Seguimos rumbo a ${d.city}.`));
+  if(pi>=4) once('p4', () => say('cap', `Iniciamos el descenso hacia ${d.city}. En destino ${f.meteo.t}°C, ${f.meteo.sky.toLowerCase()}${f.tzD!=null?`, hora local ${fmtTimeTZ(Date.now()+(f.durMs-el),f.tzD)} a la llegada`:''}. Vaya cerrando sus apuntes.`));
+  if(pi>=5) once('p5', () => say('fo', heli ? `Aproximación final a ${d.iata}. ${heliOnly(d)?'Helipuerto a la vista.':'Zona de toma despejada.'}` : `Tren abajo y blocado. Aproximación final a ${d.iata}, pista a la vista.`));
+  const every = Math.min(25, Math.max(8, f.mins/6)) * 60000;
+  if(pi===3){
+    if(!f.nextMsg) f.nextMsg = el + every;
+    if(el >= f.nextMsg){
+      f.nextMsg = el + every;
+      const pool = [
+        ['fa', `Le traigo ${f.catering}. Coma algo, el cerebro también necesita combustible.`],
+        ['fa', `¿Más agua, Comandante Supremo? La hidratación también cuenta como estudio.`],
+        ['fo', `Viento de cola favorable. Usted mantenga el rumbo en sus apuntes.`],
+        ['cap', `Todo en orden en cabina. Llevamos ${fmtHM(el/60000)} de ${veh} sin una sola distracción. Siga así.`],
+        ['fa', `Si necesita estirar las piernas, la cabina es toda suya. Treinta segundos y de vuelta al asiento.`],
+        ['fo', `Control nos autoriza ruta directa. Ni una distracción en el radar.`],
+        ['fa', `Le he dejado ${pick(Math.random,DRINKS)} en la mesa auxiliar. Va de maravilla.`],
+        ['cap', `Recuerde: cada minuto de vuelo es un minuto de estudio. Nos quedan ${fmtHM((f.durMs-el)/60000)}.`],
+      ];
+      const [w,t] = pool[(f.msgIdx++) % pool.length]; say(w,t);
+    }
+  }
+}
+
+/* =================== CICLO DE VUELO =================== */
+let wakeLock=null;
+async function keepAwake(){ try{ if('wakeLock' in navigator && flight && flight.start && !flight.pausedAt) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible') keepAwake(); });
+
+function book(){
+  if(!S.dest) return;
+  flight = createFlight(); saveFlight();
+  showPass(flight,'book');
+  enrichFlight(flight);
+}
+function board(){
+  if(!flight) return;
+  Object.assign(flight, { start:Date.now(), pausedTotal:0, pausedAt:null, breakUntil:null, said:{}, msgs:[], nextMsg:0 });
+  flight.nextBreak = flight.breakEvery ? flight.breakEvery*60000 : null;
+  saveFlight(); audio();
+  if(noise) setNoise(false,false);
+  if(LS.get('vp_noise',true)) setNoise(true);
+  try{ if('Notification' in window && Notification.permission==='default') Notification.requestPermission(); }catch(e){}
+  enterFlightMode();
+}
+function enterFlightMode(){
+  S.origin=flight.from; S.dest=flight.to; S.ac=flight.ac;
+  document.body.classList.add('flying');
+  if(map){ map.removeLayer(airportLayer); historyLayer.clearLayers(); }
+  const o=AP[flight.from], d=AP[flight.to], ac=acOf(flight), heli=ac.kind==='heli';
+  $('hRoute').textContent = `${o.iata} ${heli?'🚁':'✈'} ${d.iata}`;
+  $('hCities').textContent = `${o.city} → ${d.city}`;
+  $('pFrom').textContent = `${o.iata} · ${fmtTime(flight.start)}`;
+  $('pPlane').textContent = heli ? '🚁' : '✈️';
+  $('pPlane').style.transform = heli ? 'translate(-50%,-55%) scaleX(-1)' : 'translate(-50%,-55%)';
+  const rk = flight.crew.rk || { c:'Cmdte.', f:heli?'Copiloto':'1.er Of.', a:'TCP' };
+  $('crewline').innerHTML = `${ac.name} <b>${flight.reg}</b> · ${rk.c} <b>${flight.crew.captain}</b> · ${rk.f} <b>${flight.crew.fo}</b> · ${rk.a} <b>${flight.crew.fa}</b>`;
+  drawRoute(false); fitRoute(); renderPA(); keepAwake(); tick(true);
+}
+function exitFlightMode(){
+  document.body.classList.remove('flying');
+  if(map && !map.hasLayer(airportLayer)) airportLayer.addTo(map);
+  follow=false; $('bFollow').classList.remove('on');
+  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock=null; }
+  setNoise(false,false);
+  document.title = 'Vuelo Privado · Temporizador de estudio';
+}
+function resumeFlight(){
+  flight.pausedTotal += Date.now()-flight.pausedAt; flight.pausedAt=null; flight.breakUntil=null; keepAwake();
+}
+function togglePause(){
+  if(!flight || !flight.start) return;
+  if(flight.pausedAt){
+    const wasBreak = !!flight.breakUntil;
+    resumeFlight();
+    say('cap', wasBreak ? 'Fin del descanso. Volvemos a la ruta, Comandante Supremo: concentración máxima.' : 'Salimos del circuito de espera. Reanudamos la ruta, Comandante Supremo.');
+  } else { flight.pausedAt=Date.now(); say('cap','Control nos pone en circuito de espera. Tómese un respiro; reanudamos cuando usted diga.'); }
+  saveFlight(); tick(true);
+}
+function startBreak(){
+  flight.pausedAt=Date.now(); flight.breakUntil=Date.now()+flight.breakLen*60000;
+  flight.nextBreak += flight.breakEvery*60000;
+  say('fa', `Comandante Supremo, toca descanso: ${flight.breakLen} minutos. Levántese, estire las piernas y beba agua. Le aviso al terminar.`);
+  CABIN_SOUNDS.seatbelt && actx && CABIN_SOUNDS.seatbelt();
+  saveFlight();
+}
+function addLog(status){
+  const f=flight, el=elapsedMs(f), p=Math.min(1,el/f.durMs);
+  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*p), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:{...f, msgs:[], said:{}} };
+  log.unshift(entry); saveLog(); updateTier();
+  return entry;
+}
+function land(){
+  const f=flight, d=AP[f.to]; const tierBefore=tierFor(totals().hours).n;
+  const newCountry = !log.some(e => e.status==='ok' && AP[e.to]?.cc===d.cc);
+  say('cap', `Bienvenido a ${d.city}, Comandante Supremo. Ha sido un honor ${acOf(f).kind==='heli'?'llevarle':'volar con usted'}.`);
+  const e = addLog('ok');
+  const tierNow = tierFor(totals().hours);
+  try{ if('Notification' in window && Notification.permission==='granted') new Notification('🛬 Llegada a ' + d.city, { body:`${f.flightNo} completado: ${fmtHM(e.studyMin)} de estudio.`, icon:'icon.svg' }); }catch(err){}
+  $('landTitle').textContent = `Bienvenido a ${d.city}`;
+  $('landSub').innerHTML = `${f.flightNo} completado, Comandante Supremo.${f.tzD!=null?` Hora local: <b>${fmtTimeTZ(Date.now(),f.tzD)}</b> (${fmtUTC(f.tzD)}).`:''}`
+    + (newCountry?`<br><b style="color:var(--gold2)">🛂 Nuevo sello en su pasaporte: ${flag(d.cc)} ${COUNTRIES[d.cc]}</b>`:'')
+    + (tierBefore!==tierNow.n?`<br><b style="color:var(--gold2)">¡Ascenso al Club ${tierNow.n}!</b>`:'');
+  const t=totals();
+  $('landStats').innerHTML = [
+    ['Tiempo estudiado', fmtHM(e.studyMin)], ['Distancia', fmtN(f.dist)+' km'], [acOf(f).kind==='heli'?'Helicóptero':'Aeronave', acOf(f).short],
+    ['Meteo', `${f.meteo.t}°C ${f.meteo.sky.split(' ').pop()}`], ['Total horas', t.hours.toFixed(1)+' h'], ['Club', tierNow.n],
+  ].map(([k,v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  $('landNext').textContent = `✈️ Nuevo vuelo desde ${d.city}`;
+  flight=null; saveFlight();
+  S.origin=e.to; S.dest=null; ensureAircraft(); savePref();
+  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
+  openModal('mLand');
+}
+async function abort(){
+  const ok = await confirmBox('¿Desviar el vuelo?', 'El tiempo estudiado hasta ahora se guardará en su bitácora como vuelo desviado.', 'Desviar');
+  if(!ok || !flight) return;
+  const f=flight; addLog('ko');
+  flight=null; saveFlight();
+  S.origin=f.from; S.dest=f.to;
+  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
+  toast('Vuelo desviado. Registrado en la bitácora.');
+}
+function profile(p){
+  const ac=acOf(flight), cr=flight.alt, v=ac.speed;
+  if(ac.kind==='heli'){
+    if(p<.02) return { alt:0, spd:0 };
+    if(p<.04){ const t=(p-.02)/.02; return { alt:t*300, spd:t*60 }; }
+    if(p<.10){ const t=(p-.04)/.06; return { alt:300+t*(cr-300), spd:60+t*(v-60) }; }
+    if(p<.90) return { alt:cr + Math.sin(Date.now()/7000)*40, spd:v + Math.sin(Date.now()/9000)*4 };
+    if(p<.97){ const t=(p-.90)/.07; return { alt:cr-t*(cr-400), spd:v-t*(v-120) }; }
+    if(p<1){ const t=(p-.97)/.03; return { alt:400*(1-t), spd:120*(1-t) }; }
+    return { alt:0, spd:0 };
+  }
+  if(p<.03) return { alt:0, spd:20+p/.03*20 };
+  if(p<.08){ const t=(p-.03)/.05; return { alt:t*3000, spd:160+t*190 }; }
+  if(p<.20){ const t=(p-.08)/.12; return { alt:3000+t*(cr-3000), spd:350+t*(v-350) }; }
+  if(p<.82) return { alt:cr, spd:v + Math.sin(Date.now()/9000)*6 };
+  if(p<.95){ const t=(p-.82)/.13; return { alt:cr-t*(cr-5000), spd:v-t*(v-420) }; }
+  if(p<1){ const t=(p-.95)/.05; return { alt:5000*(1-t), spd:420-t*190 }; }
+  return { alt:0, spd:0 };
+}
+let lastMapUpd=0;
+function tick(force){
+  if(!flight || !flight.start) return;
+  // fin automático del descanso
+  if(flight.breakUntil && Date.now() >= flight.breakUntil){ resumeFlight(); say('cap','Fin del descanso. Volvemos a la ruta, Comandante Supremo: concentración máxima.'); saveFlight(); }
+  const el=elapsedMs(flight), p=Math.min(1, el/flight.durMs), rem=flight.durMs-el;
+  if(p>=1){ land(); return; }
+  // descanso programado
+  if(!flight.pausedAt && flight.breakEvery && flight.nextBreak && el >= flight.nextBreak){
+    if(rem > 8*60000) startBreak(); else flight.nextBreak = Infinity;
+  }
+  const paused=!!flight.pausedAt, onBreak=!!flight.breakUntil;
+  const PH=phasesOf(flight), pi=phaseIdx(p,flight), ph=PH[pi]||PH[PH.length-1], pr=profile(p), heli=acOf(flight).kind==='heli';
+  $('hTimer').textContent = onBreak ? fmtClock(flight.breakUntil-Date.now()) : fmtClock(rem);
+  $('hTimerLbl').textContent = onBreak ? '☕ Descanso · vuelve en' : paused ? 'En espera · pausado' : 'Tiempo restante';
+  $('hud').classList.toggle('on-break', onBreak);
+  $('hEl').textContent = fmtClock(el);
+  $('hAlt').textContent = paused && p>.1 && p<.9 ? 'Holding' : fmtN(pr.alt)+' ft';
+  $('hSpd').textContent = fmtN(pr.spd)+' km/h';
+  $('hKm').textContent = fmtN(flight.dist*(1-p))+' km';
+  $('hPct').textContent = (p*100).toFixed(1)+'%';
+  const eta = Date.now()+rem;
+  $('hEta').textContent = fmtTimeTZ(eta, flight.tzD) + (flight.tzD!=null?'*':'');
+  $('hEta').title = flight.tzD!=null ? `Hora local en destino (${fmtUTC(flight.tzD)})` : '';
+  $('pTo').textContent = `${AP[flight.to].iata} · ${fmtTime(eta)}`;
+  $('pFill').style.width = (p*100)+'%';
+  $('pPlane').style.left = (p*100)+'%';
+  $('phase').classList.toggle('paused',paused);
+  $('phaseTxt').textContent = onBreak ? '☕ Descanso programado' : paused ? '⏸ Circuito de espera' : `${ph.i} ${ph.n}`;
+  $('phaseFn').textContent = `${flight.flightNo} · ${flight.callsign}`;
+  $('bPause').textContent = onBreak ? '▶️ Terminar descanso' : paused ? '▶️ Reanudar' : '⏸ Pausar';
+  document.title = `${onBreak?'☕':paused?'⏸':heli?'🚁':'✈️'} ${onBreak?fmtClock(flight.breakUntil-Date.now()):fmtClock(rem)} · ${flight.from}→${flight.to}`;
+  if(force || Date.now()-lastMapUpd>1000){ lastMapUpd=Date.now(); updatePlane(p); }
+  if(!paused) announcements(p, el);
+}
+setInterval(tick, 250);
+
+/* =================== CONFIRMACIÓN =================== */
+function confirmBox(title,text,okLbl='Aceptar'){
+  return new Promise(res => {
+    $('cfTitle').textContent=title; $('cfText').textContent=text; $('cfYes').textContent=okLbl;
+    const done=v=>{ closeModal('mConfirm'); $('cfYes').onclick=$('cfNo').onclick=null; res(v); };
+    $('cfYes').onclick=()=>done(true); $('cfNo').onclick=()=>done(false);
+    openModal('mConfirm');
+  });
+}
+
+/* =================== BITÁCORA =================== */
+function updateTier(){ const t=tierFor(totals().hours); $('tierName').textContent='Club '+t.n; $('tierDot').style.background=t.c; }
+function renderLog(){
+  const t=totals();
+  $('lbStats').innerHTML = [[t.flights,'Vuelos'],[t.hours.toFixed(1),'Horas de estudio'],[fmtN(t.km),'Kilómetros'],[t.dests,'Destinos']].map(([v,k]) => `<div class="lb-stat"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+  const cur=tierFor(t.hours), idx=TIERS.indexOf(cur), next=TIERS[idx+1];
+  const pct = next ? Math.min(100,(t.hours-cur.h)/(next.h-cur.h)*100) : 100;
+  $('tierCard').innerHTML = `<div class="tier-row"><div>Club Vuelo Privado<br><b>${cur.n}</b></div><div style="text-align:right;color:var(--muted)">${next?`Faltan <b style="font-size:16px">${(next.h-t.hours).toFixed(1)} h</b><br>para ${next.n}`:'Nivel máximo alcanzado'}</div></div><div class="tier-bar"><div style="width:${pct}%"></div></div>`;
+  $('lbList').innerHTML = log.length ? log.map((e,i) => `<button class="lb-item" data-i="${i}">
+      <span class="rt">${e.from} → ${e.to}</span>
+      <span class="meta"><b>${AP[e.from]?.city||e.from} → ${AP[e.to]?.city||e.to}</b><br>${e.flightNo} · ${ACF[e.ac]?.short||''} · ${fmtDate(e.date)}</span>
+      <span class="meta hide-m" style="text-align:right"><b>${fmtHM(e.studyMin)}</b><br>${fmtN(e.km)} km</span>
+      <span class="st ${e.status==='ok'?'ok':'ko'}">${e.status==='ok'?'Completado':'Desviado'}</span></button>`).join('')
+    : `<div class="empty">Aún no hay vuelos registrados.<br>Su primer despegue le espera, Comandante Supremo.</div>`;
+  $('lbClear').style.display = log.length ? '' : 'none';
+}
+function exportLog(){
+  const data = { app:'vuelo-privado', version:2, exported:new Date().toISOString(), log, pref:S };
+  const blob = new Blob([JSON.stringify(data,null,1)], { type:'application/json' });
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`vuelo-privado-bitacora-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  toast('Copia de seguridad descargada');
+}
+function importLog(file){
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const data=JSON.parse(rd.result); const inc=Array.isArray(data)?data:data.log;
+      if(!Array.isArray(inc)) throw 0;
+      const ids=new Set(log.map(e=>e.id)); let added=0;
+      inc.forEach(e=>{ if(e && e.id && e.from && e.to && !ids.has(e.id)){ log.push(e); ids.add(e.id); added++; } });
+      log.sort((a,b)=>(b.date||0)-(a.date||0)); saveLog(); updateTier(); renderLog(); drawHistory();
+      toast(added ? `${added} vuelo${added>1?'s':''} importado${added>1?'s':''}` : 'No había vuelos nuevos que importar');
+    }catch(e){ toast('El archivo no es una copia válida de Vuelo Privado'); }
+  };
+  rd.readAsText(file);
+}
+
+/* =================== PASAPORTE =================== */
+function renderPassport(){
+  const ok = log.filter(e => e.status==='ok' && AP[e.to]);
+  const byCountry = {};
+  ok.slice().reverse().forEach(e => { const a=AP[e.to]; (byCountry[a.cc] ||= { first:e.date, n:0, places:new Set() }); byCountry[a.cc].n++; byCountry[a.cc].places.add(a.city); });
+  const bases = [...new Set(ok.filter(e => isMilAp(AP[e.to])).map(e => e.to))];
+  const helis = [...new Set(ok.filter(e => AP[e.to].type==='hp').map(e => e.to))];
+  const cc = Object.keys(byCountry);
+  $('ppStats').innerHTML = [[cc.length,'Países'],[new Set(ok.map(e=>e.to)).size,'Destinos'],[bases.length,'Bases militares'],[helis.length,'Helipuertos']].map(([v,k]) => `<div class="lb-stat"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+  $('ppStamps').innerHTML = cc.length ? cc.map(c => {
+    const r=mulberry32(hashStr(c)), ink=pick(r,STAMP_INKS), rot=Math.round(r()*24-12), shape=r()<.5?'round':'rect';
+    const x=byCountry[c];
+    return `<div class="stamp ${shape}" style="--ink:${ink};transform:rotate(${rot}deg)">
+      <div class="st-flag">${flag(c)}</div><div class="st-name">${COUNTRIES[c].toUpperCase()}</div>
+      <div class="st-date">${fmtDate(x.first)}</div><div class="st-n">${x.n} vuelo${x.n>1?'s':''} · ${[...x.places].slice(0,2).join(', ')}</div></div>`;
+  }).join('') : `<div class="empty" style="grid-column:1/-1">Su pasaporte está esperando el primer sello.<br>Complete un vuelo para estrenarlo.</div>`;
+  $('ppBases').innerHTML = bases.length ? `<div class="h-sec" style="margin-top:18px">🎖️ Bases militares visitadas</div><div class="chips">${bases.map(b=>`<span class="chip on">${flag(AP[b].cc)} ${AP[b].name}</span>`).join('')}</div>` : '';
+}
+
+/* =================== EVENTOS =================== */
+setupCombo($('inOrigin'), $('lsOrigin'), 'origin');
+setupCombo($('inDest'), $('lsDest'), 'dest');
+$('btnSwap').onclick = () => { if(!S.dest) return; [S.origin,S.dest]=[S.dest,S.origin]; ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute(); };
+$('selAc').onchange = e => { S.ac=e.target.value; savePref(); renderPlan(); drawRoute(false); };
+$('btnBook').onclick = book;
+$('btnRandom').onclick = () => {
+  const o=AP[S.origin], cur=ACF[S.ac];
+  const all = AIRPORTS.filter(a => a.iata!==o.iata && feasible(cur,o,a)).map(a => ({ a, m:flightMin(distKm(o,a),cur) }));
+  const near = all.filter(x => Math.abs(x.m-S.study) <= Math.max(15, S.study*.35));
+  const pool = near.length ? near : all;
+  if(!pool.length){ toast('No hay destinos alcanzables con esta aeronave'); return; }
+  const x = pool[Math.floor(Math.random()*pool.length)];
+  S.dest = x.a.iata; savePref(); syncInputs(); renderPlan(); drawRoute(); toast(`Destino sorpresa: ${x.a.city} ${flag(x.a.cc)}`);
+};
+$('chips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.study=+c.dataset.m; savePref(); renderChips(); renderSuggestions(); });
+$('chips').addEventListener('change', e => { if(e.target.id==='studyCustom'){ S.study=Math.max(5,Math.min(1200,+e.target.value||60)); savePref(); renderChips(); renderSuggestions(); } });
+$('breakChips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.breaks=+c.dataset.b; savePref(); renderChips(); });
+$('sugg').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(!b) return; S.dest=b.dataset.i; ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute(); });
+$('bPause').onclick = togglePause;
+$('bNoise').onclick = () => setNoise(!noise);
+$('vol').value = vol;
+$('vol').oninput = e => { audio(); setVolume(+e.target.value); };
+$('bFollow').onclick = () => { follow=!follow; $('bFollow').classList.toggle('on',follow); if(follow){ map && map.setZoom(Math.max(map.getZoom(), acOf(flight).kind==='heli'?9:6)); tick(true); } else fitRoute(); };
+$('bPass').onclick = () => flight && showPass(flight,'view');
+$('bFull').onclick = () => { try{ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }catch(e){} };
+$('bAbort').onclick = abort;
+$('paHead').onclick = () => { $('pa').classList.toggle('collapsed'); $('paToggle').textContent = $('pa').classList.contains('collapsed') ? '+' : '–'; };
+$('btnLog').onclick = $('btnClub').onclick = () => { renderLog(); openModal('mLog'); };
+$('btnPassport').onclick = () => { renderPassport(); openModal('mPassport'); };
+$('lbList').addEventListener('click', e => { const b=e.target.closest('.lb-item'); if(!b) return; const en=log[+b.dataset.i]; if(en.f) showPass(en.f,'view'); });
+$('lbClear').onclick = async () => { closeModal('mLog'); if(await confirmBox('¿Borrar la bitácora?','Se eliminarán todos los vuelos y horas registradas. Le recomendamos exportar una copia antes. No se puede deshacer.','Borrar')){ log=[]; saveLog(); updateTier(); drawHistory(); toast('Bitácora borrada'); } };
+$('lbExport').onclick = exportLog;
+$('lbImport').onclick = () => $('importFile').click();
+$('importFile').onchange = e => { const f=e.target.files[0]; if(f) importLog(f); e.target.value=''; };
+$('landNext').onclick = () => { closeModal('mLand'); $('inDest').focus(); };
+$('landLog').onclick = () => { closeModal('mLand'); renderPassport(); openModal('mPassport'); };
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape') document.querySelectorAll('.modal.open').forEach(m => { if(m.id!=='mConfirm') closeModal(m.id); });
+  if(e.code==='Space' && flight && flight.start && !document.querySelector('.modal.open') && document.activeElement.tagName!=='INPUT'){ e.preventDefault(); togglePause(); }
+});
+window.addEventListener('resize', () => { if(routeA && !follow) fitRoute(); });
+window.addEventListener('online', () => toast('Conexión recuperada'));
+window.addEventListener('offline', () => toast('Sin conexión: el vuelo continúa con normalidad'));
+
+/* =================== INICIO =================== */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+initMap();
+updateTier();
+renderChips();
+syncInputs();
+if(flight && flight.start){
+  if(!ACF[flight.ac]) flight.ac='g700';
+  if(flight.alt==null) flight.alt = (flight.fl||430)*100;
+  enterFlightMode(); toast('Vuelo en curso recuperado');
+} else {
+  if(flight && !flight.start){ flight=null; saveFlight(); }
+  ensureAircraft(); renderPlan(); drawRoute();
+}
