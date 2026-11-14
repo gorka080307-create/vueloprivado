@@ -245,6 +245,7 @@ const AP_TYPES = {
   hp:   { label:'Helipuerto',        icon:'🚁',  color:'#6fd3e0', r:3.2 },
   mil:  { label:'Base militar',      icon:'🎖️',  color:'#9fcf6a', r:3.6 },
   milh: { label:'Base militar (helicópteros)', icon:'🎖️', color:'#9fcf6a', r:3.2 },
+  cp:   { label:'Punto libre elegido en el mapa', icon:'📍', color:'#ff7eb6', r:4.5 },
 };
 
 /* kind: jet | heli · mil: flota del Estado / Fuerzas Armadas

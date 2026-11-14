@@ -7,7 +7,18 @@ const PAX = { name:'GORKA CORBACHO MARTÍNEZ', alias:'COMANDANTE SUPREMO' };
 const AIRPORTS = AIRPORTS_RAW.map(a => ({ iata:a[0], city:a[1], name:a[2], cc:a[3], lat:a[4], lon:a[5], type:a[6]||'ap', note:a[7]||'' }));
 const AP = Object.fromEntries(AIRPORTS.map(a => [a.iata, a]));
 const ACF = Object.fromEntries(AIRCRAFT.map(a => [a.id, a]));
-const heliOnly = a => a.type==='hp' || a.type==='milh';
+const heliOnly = a => a.type==='hp' || a.type==='milh' || a.type==='cp';
+
+/* ---- puntos libres elegidos en el mapa (solo helicóptero) ---- */
+let customPts = LS_get('vp_custom', []);
+function LS_get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
+function indexCustom(c){
+  const a = { iata:c.code, city:c.city, name:c.name, cc:c.cc, lat:c.lat, lon:c.lon, type:'cp', note:'Punto libre elegido en el mapa', custom:true };
+  if(c.country && !COUNTRIES[c.cc]) COUNTRIES[c.cc] = c.country;
+  const i = AIRPORTS.findIndex(x => x.iata===a.iata); if(i>=0) AIRPORTS[i]=a; else AIRPORTS.push(a);
+  AP[a.iata] = a; return a;
+}
+customPts.forEach(indexCustom);
 const isMilAp = a => a.type==='mil' || a.type==='milh';
 
 const NAMES_M = ['Alejandro','Javier','Íñigo','Mikel','Álvaro','Sergio','Daniel','Jorge','Rafael','Unai','Pablo','Marcos','Diego','Hugo','Adrián','Asier','Fernando','Gonzalo','Ignacio','Rodrigo','Aitor','Martín'];
@@ -139,15 +150,75 @@ function initMap(){
   historyLayer = L.layerGroup().addTo(map);
   airportLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
-  AIRPORTS.forEach(a => {
-    const t = AP_TYPES[a.type];
-    const m = L.circleMarker([a.lat,a.lon], { radius:t.r, color:t.color, weight:1, fillColor:t.color, fillOpacity:.6, opacity:.7 });
-    m.bindPopup(`<div style="font-weight:700">${flag(a.cc)} ${t.icon} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}${a.note?'<br>'+a.note:''}<br><i>${t.label}${heliOnly(a)?' · solo helicópteros':''}</i></div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>`);
-    airportLayer.addLayer(m);
-  });
+  AIRPORTS.forEach(addApMarker);
+  map.on('click', onMapClick);
   map.on('dragstart', () => { if(follow){ follow=false; $('bFollow').classList.remove('on'); } });
   drawNight(); setInterval(drawNight, 5*60000);
 }
+const apMarkers = {};
+function addApMarker(a){
+  const t = AP_TYPES[a.type];
+  const m = L.circleMarker([a.lat,a.lon], { radius:t.r, color:t.color, weight:a.custom?2:1, fillColor:t.color, fillOpacity:.6, opacity:.8, bubblingMouseEvents:false });
+  m.bindPopup(`<div style="font-weight:700">${flag(a.cc)} ${t.icon} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}${a.note?'<br>'+a.note:''}<br><i>${t.label}${heliOnly(a)?' · solo helicópteros':''}</i></div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>${a.custom?`<div class="pop-btns"><button onclick="removeCustom('${a.iata}')" style="color:var(--red)">Borrar este punto</button></div>`:''}`);
+  airportLayer.addLayer(m); apMarkers[a.iata]=m;
+}
+/* --- clic libre en el mapa --- */
+function onMapClick(e){
+  if(flight && flight.start) return;
+  const ll = e.latlng.wrap(), lat=+ll.lat.toFixed(4), lon=+ll.lng.toFixed(4);
+  const heli = ACF[S.ac].kind==='heli';
+  L.popup({ className:'free-pop' }).setLatLng(e.latlng).setContent(
+    `<div style="font-weight:700">📍 Punto libre</div><div style="color:var(--muted);font-size:11.5px">${Math.abs(lat).toFixed(3)}°${lat>=0?'N':'S'} · ${Math.abs(lon).toFixed(3)}°${lon>=0?'E':'W'}<br>${heli?'Su helicóptero puede tomar tierra aquí.':'<b style="color:var(--gold2)">Solo en helicóptero:</b> se cambiará de aeronave.'}</div>
+     <div class="pop-btns"><button onclick="pickFree('origin',${lat},${lon})">🚁 Despegar desde aquí</button><button onclick="pickFree('dest',${lat},${lon})">🚁 Aterrizar aquí</button></div>`
+  ).openOn(map);
+}
+function nearestAp(lat,lon){ let best=null, bd=1e9; AIRPORTS.forEach(a => { if(a.custom) return; const d=distKm({lat,lon},a); if(d<bd){ bd=d; best=a; } }); return best; }
+async function reverseGeocode(lat,lon){
+  const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),6000);
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=es`, { signal:ctl.signal });
+    const j = await r.json(); if(!j) return null; if(j.error) return { sea:true };
+    const ad = j.address || {};
+    const place = ad.city || ad.town || ad.village || ad.hamlet || ad.municipality || ad.suburb || ad.county || ad.state;
+    const spot = j.name && j.name!==place ? j.name : (ad.road || ad.neighbourhood || ad.natural || ad.peak || '');
+    return { place, spot, cc:(ad.country_code||'').toUpperCase(), country:ad.country };
+  }catch(e){ return null; } finally{ clearTimeout(to); }
+}
+window.pickFree = async function(key, lat, lon){
+  if(map) map.closePopup();
+  toast('📍 Localizando el punto…');
+  const geo = await reverseGeocode(lat,lon);
+  const near = nearestAp(lat,lon);
+  const seq = LS.get('vp_cp_seq',0)+1; LS.set('vp_cp_seq',seq);
+  const code = 'P' + String(seq % 1000).padStart(3,'0');
+  const coordTxt = `${Math.abs(lat).toFixed(2)}°${lat>=0?'N':'S'} ${Math.abs(lon).toFixed(2)}°${lon>=0?'E':'W'}`;
+  const c = {
+    code,
+    city: geo?.place || (geo?.sea ? `En el mar · ${coordTxt}` : `Punto ${coordTxt}`),
+    name: geo?.spot ? `Punto libre · ${geo.spot}` : geo?.sea ? 'Toma sobre plataforma en el mar' : 'Punto libre de toma',
+    cc: geo?.cc && geo.cc.length===2 ? geo.cc : near.cc,
+    country: geo?.country || null, lat, lon,
+  };
+  // conserva solo los puntos usados en la bitácora o los 40 más recientes
+  customPts = customPts.filter(p => p.code!==code);
+  customPts.push(c);
+  const used = new Set(log.flatMap(e => [e.from,e.to]).concat([S.origin,S.dest]));
+  while(customPts.length > 40){ const i = customPts.findIndex(p => !used.has(p.code)); if(i<0) break; const old=customPts.splice(i,1)[0]; if(apMarkers[old.code]) airportLayer.removeLayer(apMarkers[old.code]); }
+  LS.set('vp_custom', customPts);
+  const a = indexCustom(c);
+  if(map){ if(apMarkers[code]) airportLayer.removeLayer(apMarkers[code]); addApMarker(a); }
+  pickAirport(key, code);
+  toast(`📍 ${key==='origin'?'Despegue':'Aterrizaje'} en ${a.city}${COUNTRIES[a.cc]?', '+COUNTRIES[a.cc]:''}`);
+};
+window.removeCustom = function(code){
+  if(map) map.closePopup();
+  if(S.origin===code || S.dest===code){ toast('Ese punto está en su plan de vuelo actual'); return; }
+  customPts = customPts.filter(p => p.code!==code); LS.set('vp_custom', customPts);
+  if(apMarkers[code]) airportLayer.removeLayer(apMarkers[code]);
+  if(!log.some(e => e.from===code || e.to===code)){ const i=AIRPORTS.findIndex(x=>x.iata===code); if(i>=0) AIRPORTS.splice(i,1); delete AP[code]; }
+  toast('Punto borrado');
+};
+
 /* --- terminador día/noche --- */
 function solarPos(date){
   const rad=Math.PI/180, jd=date/86400000+2440587.5, n=jd-2451545.0;
@@ -268,7 +339,7 @@ function ensureAircraft(){
   const o=AP[S.origin], d=AP[S.dest];
   if(!feasible(ACF[S.ac],o,d)){
     const b=bestAircraft(o,d,S.ac);
-    if(b){ S.ac=b.id; toast(`${heliOnly(o)||heliOnly(d)?'Helipuerto: solo helicópteros.':'Autonomía insuficiente.'} Asignamos un ${b.short}`); }
+    if(b){ S.ac=b.id; toast(`${heliOnly(o)||heliOnly(d)?'Solo se puede llegar en helicóptero.':'Autonomía insuficiente.'} Asignamos un ${b.short}`); }
   }
 }
 function renderAircraftSelect(){
@@ -340,7 +411,7 @@ function createFlight(){
     reg: ac.reg ? ac.reg(r) : (ac.kind==='heli' ? 'EC-H' + L3().slice(0,2) : 'EC-' + L3()),
     from:o.iata, to:d.iata, ac:ac.id, dist, mins, durMs:mins*60000, alt:cruiseAlt(dist,ac), stops:stopsFor(dist,ac),
     crew: { captain:person(r), fo:person(r), fa:person(r,'F'), rk: mil ? { c:'Cte.', f:'Cap.', a:'Sgto.' } : null },
-    catering:pick(r,CATERING), drink:pick(r,DRINKS), gate: mil||isMilAp(o) ? pick(r,GATES_MIL) : heliOnly(o) ? 'Plataforma del helipuerto' : pick(r,GATES),
+    catering:pick(r,CATERING), drink:pick(r,DRINKS), gate: mil||isMilAp(o) ? pick(r,GATES_MIL) : o.type==='cp' ? 'Zona de toma libre' : heliOnly(o) ? 'Plataforma del helipuerto' : pick(r,GATES),
     runway: pad(1+Math.floor(r()*36)) + pick(r,['L','R','C','']),
     meteo: { t:Math.round(baseT + (r()*8-4)), sky:pick(r,SKY), live:false },
     tzO:null, tzD:null,
@@ -366,7 +437,7 @@ function passHTML(f){
   const tier = tierFor(totals().hours);
   const code = `${f.flightNo.replace(' ','')}${f.from}${f.to}${new Date(dep).getDate()}`;
   const rk = f.crew.rk || { c:'', f:'', a:'' };
-  const terminal = isMilAp(o) ? 'Base militar' : heliOnly(o) ? 'Helipuerto' : 'FBO Ejecutivo';
+  const terminal = isMilAp(o) ? 'Base militar' : o.type==='cp' ? 'Punto libre' : heliOnly(o) ? 'Helipuerto' : 'FBO Ejecutivo';
   const altTxt = heli ? fmtN(f.alt)+' ft' : 'FL'+(f.alt/100);
   return `<div class="bp${mil?' bp-mil':''}" id="bpCard">
    <div class="bp-main">
@@ -799,7 +870,7 @@ function renderLog(){
   $('lbClear').style.display = log.length ? '' : 'none';
 }
 function exportLog(){
-  const data = { app:'vuelo-privado', version:2, exported:new Date().toISOString(), log, pref:S };
+  const data = { app:'vuelo-privado', version:3, exported:new Date().toISOString(), log, pref:S, custom:customPts };
   const blob = new Blob([JSON.stringify(data,null,1)], { type:'application/json' });
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`vuelo-privado-bitacora-${new Date().toISOString().slice(0,10)}.json`; a.click();
@@ -812,6 +883,8 @@ function importLog(file){
     try{
       const data=JSON.parse(rd.result); const inc=Array.isArray(data)?data:data.log;
       if(!Array.isArray(inc)) throw 0;
+      if(Array.isArray(data.custom)) data.custom.forEach(c => { if(c && c.code && !customPts.some(p=>p.code===c.code)){ customPts.push(c); const a=indexCustom(c); if(map) addApMarker(a); } });
+      LS.set('vp_custom', customPts);
       const ids=new Set(log.map(e=>e.id)); let added=0;
       inc.forEach(e=>{ if(e && e.id && e.from && e.to && !ids.has(e.id)){ log.push(e); ids.add(e.id); added++; } });
       log.sort((a,b)=>(b.date||0)-(a.date||0)); saveLog(); updateTier(); renderLog(); drawHistory();
