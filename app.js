@@ -73,8 +73,13 @@ function feasible(ac,o,d){
 }
 function flightMin(dist,ac){
   const stops = stopsFor(dist,ac);
-  const base = ac.kind==='heli' ? dist/(ac.speed*0.9)*60 + 12 : dist/(ac.speed*0.92)*60 + 22;
-  return Math.max(ac.kind==='heli'?8:15, Math.round(base + stops*(ac.kind==='heli'?20:45)));
+  if(ac.kind==='heli'){
+    // helicóptero: sin rodaje; ~2 min despegue/ascenso + ~2 min aproximación; en tramos cortos no llega a velocidad de crucero
+    const eff = dist < 30 ? ac.speed*0.7 : dist < 100 ? ac.speed*0.8 : ac.speed*0.88;
+    return Math.max(4, Math.round(dist/eff*60 + 4 + stops*20));
+  }
+  // jet: rodaje, despegue/ascenso y descenso/aproximación (~18 min) + crucero
+  return Math.max(15, Math.round(dist/(ac.speed*0.92)*60 + 18 + stops*45));
 }
 function cruiseAlt(dist,ac){
   if(ac.kind==='heli') return dist<60 ? 1500 : dist<200 ? 2500 : 4500;
