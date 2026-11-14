@@ -792,6 +792,14 @@ async function abort(){
   exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
   toast('Vuelo desviado. Registrado en la bitácora.');
 }
+async function quitFlight(){
+  const ok = await confirmBox('¿Salir del vuelo?', 'Se abandona el vuelo sin guardarlo en la bitácora ni contar el tiempo. Útil si se ha equivocado de destino o aeronave.', 'Salir');
+  if(!ok || !flight) return;
+  const f=flight; flight=null; saveFlight();
+  S.origin=f.from; S.dest=f.to; S.ac=f.ac; savePref();
+  exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
+  toast('Vuelo cancelado. Puede corregir el plan y volver a despegar.');
+}
 function profile(p){
   const ac=acOf(flight), cr=flight.alt, v=ac.speed;
   if(ac.kind==='heli'){
@@ -945,6 +953,7 @@ $('bFollow').onclick = () => { follow=!follow; $('bFollow').classList.toggle('on
 $('bPass').onclick = () => flight && showPass(flight,'view');
 $('bFull').onclick = () => { try{ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }catch(e){} };
 $('bAbort').onclick = abort;
+$('bQuit').onclick = quitFlight;
 $('paHead').onclick = () => { $('pa').classList.toggle('collapsed'); $('paToggle').textContent = $('pa').classList.contains('collapsed') ? '+' : '–'; };
 $('btnLog').onclick = $('btnClub').onclick = () => { renderLog(); openModal('mLog'); };
 $('btnPassport').onclick = () => { renderPassport(); openModal('mPassport'); };
