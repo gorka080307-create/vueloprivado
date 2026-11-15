@@ -1,5 +1,5 @@
 /* Vuelo Privado · service worker: funciona sin conexión */
-const SHELL = 'vp-shell-v11';
+const SHELL = 'vp-shell-v12';
 const CDN = 'vp-cdn-v1';
 const TILES = 'vp-tiles-v1';
 const SHELL_FILES = ['./', './index.html', './data.js', './app.js', './views.js', './manifest.json', './icon.svg'];

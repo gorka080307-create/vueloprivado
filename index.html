@@ -270,23 +270,23 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
 
 /* ===== vistas inmersivas ===== */
 #viewCanvas{position:fixed;inset:0;z-index:5;display:none;background:#000}
-body.flying.view-window #viewCanvas, body.flying.view-cockpit #viewCanvas{display:block}
-body.flying.view-window #hud, body.flying.view-cockpit #hud, body.flying.view-window #phasePill, body.flying.view-cockpit #phasePill{display:none!important}
-body.flying.view-window .vignette, body.flying.view-cockpit .vignette{display:none}
+body.flying.view-window #viewCanvas{display:block}
+body.flying.view-window #hud, body.flying.view-window #phasePill{display:none!important}
+body.flying.view-window .vignette{display:none}
 #viewSwitch{position:fixed;z-index:16;top:80px;left:20px;display:none;padding:4px;border-radius:14px;gap:2px}
 body.flying #viewSwitch{display:flex}
 #viewSwitch button{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--muted)}
 #viewSwitch button.on{background:rgba(212,175,106,.16);color:var(--gold2)}
 #viewSwitch button:hover{color:var(--text)}
 #viewBar{position:fixed;z-index:16;top:16px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:12px;padding:6px 8px 6px 16px;border-radius:999px}
-body.flying.view-window #viewBar, body.flying.view-cockpit #viewBar{display:flex}
-body.flying.view-window .topbar, body.flying.view-cockpit .topbar{display:none}
-body.flying.view-window #viewSwitch, body.flying.view-cockpit #viewSwitch{top:16px}
+body.flying.view-window #viewBar{display:flex}
+body.flying.view-window .topbar{display:none}
+body.flying.view-window #viewSwitch{top:16px}
 #viewBar span{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
 #viewBar b{font-family:var(--mono);font-size:20px;font-weight:600}
 #viewBar button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line2);background:rgba(255,255,255,.04)}
 #viewBar button:hover{border-color:var(--gold)}
-body.flying.view-cockpit #pa, body.flying.view-window #pa{top:64px}
+body.flying.view-window #pa{top:64px}
 body.flying.view-window:not(.tablet-min) #pa{width:440px;right:24px}
 /* tablet */
 #tablet{position:fixed;z-index:12;right:24px;bottom:24px;width:440px;height:min(62vh,420px);display:none}
@@ -334,7 +334,7 @@ body.flying.view-window #tabToggle{display:grid;place-items:center}
   #viewSwitch{top:62px;left:10px}
   #viewBar{left:auto;right:10px;transform:none;gap:8px}
   #viewBar span{display:none}
-  body.flying.view-window #viewSwitch, body.flying.view-cockpit #viewSwitch{top:14px;left:10px}
+  body.flying.view-window #viewSwitch{top:14px;left:10px}
   #tablet{left:50%;right:auto;transform:translateX(-50%);width:94vw;height:min(46vh,380px);bottom:8px}
   #tabToggle{left:auto;right:12px;bottom:calc(min(46vh,380px) + 18px);width:40px;height:40px;font-size:17px}
   body.tablet-min #tabToggle{bottom:16px}
@@ -380,7 +380,7 @@ body.flying.view-window #tabToggle{display:grid;place-items:center}
 <canvas id="viewCanvas"></canvas>
 <div id="tablet"></div>
 <button id="tabToggle" title="Mostrar u ocultar la tablet">📱</button>
-<div id="viewSwitch" class="panel"><button data-v="map">🗺️<span> Mapa</span></button><button data-v="window">🪟<span> Ventanilla</span></button><button data-v="cockpit">🧑‍✈️<span> Cabina</span></button></div>
+<div id="viewSwitch" class="panel"><button data-v="map">🗺️<span> Mapa</span></button><button data-v="window">🪟<span> Ventanilla</span></button></div>
 <div id="viewBar" class="panel"><span id="vbPhase">—</span><b id="vbTimer">00:00</b><button id="vbPause" title="Pausar / reanudar">⏸</button><button id="vbNoise" title="Sonido de cabina">🔊</button></div>
 
 <header class="topbar">

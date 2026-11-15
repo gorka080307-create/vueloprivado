@@ -1,5 +1,5 @@
 /* ============================================================
-   VUELO PRIVADO · Vistas inmersivas: ventanilla (con tablet) y cabina de pilotaje
+   VUELO PRIVADO · Vista inmersiva: ventanilla del pasajero con tablet
    Todo se dibuja en <canvas>; depende del estado global de app.js
    ============================================================ */
 (function(){
@@ -287,321 +287,6 @@ function drawWindow(ctx, W, H, s){
 }
 
 /* =================================================================
-   ESCENA FRONTAL (cabina)
-   ================================================================= */
-function drawFrontScene(ctx, x0, y0, w, h, s){
-  const f = w*0.75, A = Math.max(s.heli?3:4, s.alt*0.3048);
-  const sk = sky(s.sun, s.alt), gb = groundBase(sk.light);
-  const cx = x0 + w*(s.heli ? .34 : .3), cy = y0 + h*0.48;   // vista desde el asiento del comandante
-  ctx.save();
-  ctx.translate(cx, cy); ctx.rotate(-s.bank*D2R);
-  const hy = s.pitch * D2R * f;          // horizonte se mueve al cabecear
-  // cielo
-  let g = ctx.createLinearGradient(0, hy - h*1.3, 0, hy);
-  g.addColorStop(0, sk.top); g.addColorStop(1, sk.hor);
-  ctx.fillStyle = g; ctx.fillRect(-w*1.5, -h*2, w*3, hy + h*2);
-  if(sk.light < .45){ ctx.fillStyle='#fff'; V.stars.forEach(st => { ctx.globalAlpha=(1-sk.light/.45)*st.m; ctx.fillRect((st.x-.5)*w*1.4, hy - st.y*h*1.2, 1.3, 1.3); }); ctx.globalAlpha=1; }
-  // suelo
-  g = ctx.createLinearGradient(0, hy, 0, hy + h*1.5);
-  g.addColorStop(0, mixHex(gb.far, sk.hor, .5)); g.addColorStop(.15, gb.far); g.addColorStop(1, gb.near);
-  ctx.fillStyle = g; ctx.fillRect(-w*1.5, hy, w*3, h*3);
-  // franjas de terreno acercándose
-  const spacing = clamp(A*0.6, 30, 3000);
-  const off = V.travel % spacing;
-  for(let k=1;k<70;k++){
-    const D = k*spacing - off; if(D < 5) continue;
-    const y = hy + f*A/D, y2 = hy + f*A/(D+spacing*.5);
-    if(y2 > h*2) continue;
-    const r = h2(Math.floor((V.travel+D)/spacing), 3);
-    let col = r<.3 ? '#56703a' : r<.55 ? '#7d7d4e' : r<.75 ? '#476035' : '#8d815c';
-    col = mixHex(mixHex(col,'#05070a',1-sk.light), sk.hor, clamp(D/(spacing*70),0,.8)*sk.light);
-    ctx.fillStyle = col; ctx.fillRect(-w*1.5, y2, w*3, Math.max(1, y-y2));
-    if(sk.light < .5 && r < .5){
-      ctx.fillStyle = `rgba(255,200,130,${(1-sk.light*2)*.8})`;
-      for(let q=0;q<10;q++){ const lx = (h2(k+Math.floor((V.travel+D)/spacing), q)-.5) * 30000; ctx.fillRect(lx*f/D, y2 + (y-y2)*h2(q,k), clamp(40*f/D, 1, 3.5), clamp(6*f/D, 1, 2.5)); }
-    }
-  }
-  // líneas de linde que convergen al horizonte
-  ctx.strokeStyle = `rgba(0,0,0,${.05+.05*sk.light})`; ctx.lineWidth = 1;
-  for(let k=-12;k<=12;k++){ if(!k) continue; const L = k*k*Math.sign(k)*A*0.35 + k*A*0.8; ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(L*f/(A*0.6), hy + f*A/(A*0.6)); ctx.stroke(); }
-  // pista / helipuerto
-  const remM = s.distLeft*1000;
-  if(!s.heli){
-    let near, far;
-    if(s.p < .1 && s.onGround){ const roll = Math.min(2400, V.rollM||0); near = 3; far = 2800 - roll; }
-    else if(s.p > .7 && Math.max(remM, A*19) < 30000){ near = Math.max(remM, A*19) + 150; far = near + 2800; }
-    else if(s.p > .995){ near = 3; far = 2600; }
-    if(near != null && far > near) drawRunway(ctx, f, A, hy, near, far, sk, s);
-  } else if(s.p > .5 && Math.max(remM, A*5.5) < 7000){
-    drawHelipad(ctx, f, A, hy, Math.max(8, remM, A*5.5), sk, s);
-  } else if(s.onGround && s.p < .05){
-    drawHelipad(ctx, f, A, hy, 12, sk, s);
-  }
-  // nubes de frente
-  V.fwdClouds.forEach((c,i) => {
-    if(i/V.fwdClouds.length > V.cloudCover) return;
-    let D = ((c.D - V.travel) % 30000 + 30000) % 30000 + 300;
-    const dy = (V.cloudAlt + c.dy) - A;
-    const sx = c.x*f/D, sy = hy - f*dy/D, size = c.s*f/D;
-    if(size < 3 || Math.abs(sx) > w*1.2) return;
-    ctx.save(); ctx.filter = `brightness(${Math.round((.35+sk.light*.65)*100)}%)`;
-    drawPuffCluster(ctx, sx, sy, size, c.a*clamp(D/1500,0,1), c.n, i+100); ctx.restore();
-  });
-  ctx.restore();
-  const inCloud = 1 - clamp(Math.abs(A - V.cloudAlt)/250, 0, 1);
-  if(inCloud > 0 && V.cloudCover > .5){ ctx.fillStyle = `rgba(${Math.round(200*sk.light+30)},${Math.round(205*sk.light+30)},${Math.round(215*sk.light+35)},${inCloud*.85})`; ctx.fillRect(x0,y0,w,h); }
-  return sk;
-}
-function drawRunway(ctx, f, A, hy, near, far, sk, s){
-  const hw = 22.5, pt = (D, x) => [x*f/D, hy + f*A/D];
-  const [nlx, ny] = pt(near,-hw), [nrx] = pt(near,hw), [flx, fy] = pt(far,-hw), [frx] = pt(far,hw);
-  ctx.fillStyle = mixHex('#141518','#4a4c50',sk.light);
-  ctx.beginPath(); ctx.moveTo(nlx, ny); ctx.lineTo(nrx, ny); ctx.lineTo(frx, fy); ctx.lineTo(flx, fy); ctx.closePath(); ctx.fill();
-  // marcas: umbral y eje
-  ctx.fillStyle = sk.light > .3 ? 'rgba(240,240,240,.9)' : 'rgba(200,200,200,.5)';
-  for(let D = Math.max(near, 5); D < far; D += 60){
-    const D2 = D + 30; if(D2 > far) break;
-    const [a1, y1] = pt(D, -.5), [, y2] = pt(D2, -.5), [b2] = pt(D2, .5);
-    ctx.beginPath(); ctx.moveTo(a1, y1); ctx.lineTo(-a1, y1); ctx.lineTo(b2, y2); ctx.lineTo(-b2, y2); ctx.fill();
-  }
-  for(let i=-7;i<=7;i++){ if(Math.abs(i)<1) continue; const x = i*2.6; const [a,y1]=pt(near+2,x-0.9), [b]=pt(near+2,x+0.9), [c,y2]=pt(near+40,x+0.9), [d]=pt(near+40,x-0.9); ctx.beginPath(); ctx.moveTo(a,y1); ctx.lineTo(b,y1); ctx.lineTo(c,y2); ctx.lineTo(d,y2); ctx.fill(); }
-  // luces de borde y aproximación
-  const night = sk.light < .6;
-  for(let D = Math.max(near,5); D < far; D += 60){
-    [-hw-1, hw+1].forEach(x => { const [lx, ly] = pt(D, x); ctx.fillStyle = night ? 'rgba(255,240,190,1)' : 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(lx, ly, clamp(80/D*f/400, .8, 4), 0, 7); ctx.fill(); });
-  }
-  for(let k=1;k<=10;k++){ const D = near - k*30; if(D < 5) continue; for(let x=-12;x<=12;x+=3){ const [lx, ly] = pt(D, x); ctx.fillStyle = night ? 'rgba(255,250,220,1)' : 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.arc(lx, ly, clamp(60/D*f/400,.7,3), 0, 7); ctx.fill(); } }
-  // PAPI
-  if(near > 150){ const glide = Math.atan(A/near)/D2R; const whites = glide > 3.5 ? 4 : glide > 3.2 ? 3 : glide > 2.8 ? 2 : glide > 2.5 ? 1 : 0;
-    for(let i=0;i<4;i++){ const [lx, ly] = pt(near+300, -hw-15-i*9); ctx.fillStyle = i < whites ? '#fff' : '#ff3030'; ctx.beginPath(); ctx.arc(lx, ly, clamp(120/near*f/400,1,4), 0, 7); ctx.fill(); } }
-}
-function drawHelipad(ctx, f, A, hy, D, sk, s){
-  const R = 14, cxp = 0, cyp = hy + f*A/D, rx = R*f/D, ry = Math.max(rx*clamp(A/D,0.06,1), 1);
-  ctx.fillStyle = mixHex('#1b1d20','#55595e',sk.light); ctx.beginPath(); ctx.ellipse(cxp, cyp, rx*1.3, ry*1.3, 0, 0, 7); ctx.fill();
-  ctx.strokeStyle = sk.light>.3 ? '#f2f2f2' : '#9aa'; ctx.lineWidth = Math.max(1, rx*.06); ctx.beginPath(); ctx.ellipse(cxp, cyp, rx, ry, 0, 0, 7); ctx.stroke();
-  ctx.fillStyle = sk.light>.3 ? '#f2f2f2' : '#9aa';
-  const hw = rx*.35, hh = ry*.6, bar = Math.max(1, rx*.09);
-  ctx.fillRect(cxp-hw, cyp-hh, bar, hh*2); ctx.fillRect(cxp+hw-bar, cyp-hh, bar, hh*2); ctx.fillRect(cxp-hw, cyp-bar/2*clamp(ry/rx,0.2,1), hw*2, Math.max(1,bar*clamp(ry/rx,.2,1)));
-  if(sk.light < .6){ for(let i=0;i<16;i++){ const a=i/16*Math.PI*2; ctx.fillStyle = i%2 ? '#3cff6a' : '#ffd23c'; ctx.beginPath(); ctx.arc(cxp+Math.cos(a)*rx*1.3, cyp+Math.sin(a)*ry*1.3, Math.max(1, rx*.04), 0, 7); ctx.fill(); } }
-}
-
-/* =================================================================
-   INSTRUMENTOS
-   ================================================================= */
-const KT = 1/1.852;
-function txt(ctx, s, x, y, size, col, align='center', font='IBM Plex Mono'){ ctx.font = `600 ${size}px "${font}", monospace`; ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y); }
-function screenBox(ctx, x, y, w, h){ ctx.fillStyle = '#050608'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = '#2a2d33'; ctx.lineWidth = 3; ctx.strokeRect(x-1.5, y-1.5, w+3, h+3); }
-function drawPFD(ctx, x, y, w, h, s){
-  screenBox(ctx, x, y, w, h);
-  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  const ax = x + w*.5, ay = y + h*.48, aw = w*.56, ah = h*.66, ppd = ah/32;
-  // actitud
-  ctx.save(); ctx.beginPath(); ctx.rect(ax-aw/2, ay-ah/2, aw, ah); ctx.clip();
-  ctx.translate(ax, ay); ctx.rotate(-s.bank*D2R); const py = s.pitch*ppd;
-  ctx.fillStyle = '#2f7fd6'; ctx.fillRect(-aw*2, -ah*3 + py, aw*4, ah*3);
-  ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-aw*2, py, aw*4, ah*3);
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-aw*2, py); ctx.lineTo(aw*2, py); ctx.stroke();
-  for(let d=-30; d<=30; d+=2.5){ if(d===0) continue; const yy = py - d*ppd, len = d%10===0 ? aw*.22 : d%5===0 ? aw*.13 : aw*.06; ctx.beginPath(); ctx.moveTo(-len, yy); ctx.lineTo(len, yy); ctx.stroke(); if(d%10===0){ txt(ctx, Math.abs(d), -len-10, yy, h*.035, '#fff'); txt(ctx, Math.abs(d), len+10, yy, h*.035, '#fff'); } }
-  ctx.restore();
-  // escala de alabeo
-  ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(ax, ay, ah*.42, (-90-60)*D2R, (-90+60)*D2R); ctx.stroke();
-  [-60,-45,-30,-20,-10,0,10,20,30,45,60].forEach(a => { const r1=ah*.42, r2=r1+(a%30===0?10:6); ctx.beginPath(); ctx.moveTo(ax+Math.sin(a*D2R)*r1, ay-Math.cos(a*D2R)*r1); ctx.lineTo(ax+Math.sin(a*D2R)*r2, ay-Math.cos(a*D2R)*r2); ctx.stroke(); });
-  ctx.save(); ctx.translate(ax, ay); ctx.rotate(-s.bank*D2R); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(0,-ah*.42+2); ctx.lineTo(-6,-ah*.42+12); ctx.lineTo(6,-ah*.42+12); ctx.fill(); ctx.restore();
-  // símbolo del avión
-  ctx.fillStyle='#ffd23c'; ctx.strokeStyle='#000'; ctx.lineWidth=1;
-  ctx.fillRect(ax-aw*.32, ay-3, aw*.18, 6); ctx.fillRect(ax+aw*.14, ay-3, aw*.18, 6); ctx.fillRect(ax-4, ay-4, 8, 8);
-  // cinta de velocidad
-  const tw = w*.13, tx = x + w*.04, kt = s.spd*KT;
-  ctx.fillStyle = 'rgba(80,85,95,.6)'; ctx.fillRect(tx, ay-ah/2, tw, ah);
-  ctx.save(); ctx.beginPath(); ctx.rect(tx, ay-ah/2, tw, ah); ctx.clip();
-  const pk = ah/80;
-  for(let v = Math.floor((kt-45)/10)*10; v < kt+45; v+=10){ if(v<0) continue; const yy = ay - (v-kt)*pk; ctx.strokeStyle='#fff'; ctx.beginPath(); ctx.moveTo(tx+tw-8, yy); ctx.lineTo(tx+tw, yy); ctx.stroke(); if(v%20===0) txt(ctx, v, tx+tw*.45, yy, h*.04, '#fff'); }
-  ctx.restore();
-  ctx.fillStyle='#000'; ctx.fillRect(tx-2, ay-h*.035, tw+6, h*.07); ctx.strokeStyle='#fff'; ctx.strokeRect(tx-2, ay-h*.035, tw+6, h*.07);
-  txt(ctx, Math.round(kt), tx+tw*.5, ay, h*.05, '#fff');
-  txt(ctx, s.heli ? 'KT' : 'M ' + (kt/600).toFixed(2), tx+tw*.5, ay+ah/2+h*.05, h*.035, '#3cff6a');
-  // cinta de altitud
-  const atx = x + w*.83, atw = w*.14;
-  ctx.fillStyle = 'rgba(80,85,95,.6)'; ctx.fillRect(atx, ay-ah/2, atw, ah);
-  ctx.save(); ctx.beginPath(); ctx.rect(atx, ay-ah/2, atw, ah); ctx.clip();
-  const pa = ah/1000;
-  for(let v = Math.floor((s.alt-600)/100)*100; v < s.alt+600; v+=100){ const yy = ay - (v-s.alt)*pa; ctx.strokeStyle='#fff'; ctx.beginPath(); ctx.moveTo(atx, yy); ctx.lineTo(atx+8, yy); ctx.stroke(); if(v%200===0) txt(ctx, v, atx+atw*.58, yy, h*.035, '#fff'); }
-  ctx.restore();
-  ctx.fillStyle='#000'; ctx.fillRect(atx-4, ay-h*.035, atw+4, h*.07); ctx.strokeStyle='#fff'; ctx.strokeRect(atx-4, ay-h*.035, atw+4, h*.07);
-  txt(ctx, Math.round(s.alt), atx+atw*.5, ay, h*.045, '#fff');
-  txt(ctx, (s.vs>=0?'↑':'↓')+Math.abs(Math.round(s.vs/50)*50), atx+atw*.5, ay+ah/2+h*.05, h*.035, '#3cff6a');
-  const sel = s.heli ? Math.round(s.f.alt/100)*100 : 'FL'+(s.f.alt/100);
-  txt(ctx, sel, atx+atw*.5, ay-ah/2-h*.04, h*.035, '#ff5ce1');
-  // rumbo
-  const hy2 = y + h*.9, hw2 = w*.5;
-  ctx.fillStyle='rgba(80,85,95,.6)'; ctx.fillRect(ax-hw2/2, hy2-h*.04, hw2, h*.08);
-  ctx.save(); ctx.beginPath(); ctx.rect(ax-hw2/2, hy2-h*.04, hw2, h*.08); ctx.clip();
-  for(let d = Math.floor(s.hdg/5)*5-30; d < s.hdg+30; d+=5){ const xx = ax + (d-s.hdg)*hw2/50; ctx.strokeStyle='#fff'; ctx.beginPath(); ctx.moveTo(xx, hy2-h*.04); ctx.lineTo(xx, hy2-h*.04+(d%10===0?8:4)); ctx.stroke(); if(d%10===0) txt(ctx, String(((d%360)+360)%360/10|0).padStart(2,'0'), xx, hy2+h*.012, h*.03, '#fff'); }
-  ctx.restore();
-  ctx.fillStyle='#000'; ctx.fillRect(ax-w*.05, hy2-h*.045, w*.1, h*.04); txt(ctx, String(Math.round(s.hdg)).padStart(3,'0'), ax, hy2-h*.025, h*.035, '#fff');
-  // anunciador de modos
-  const fma = s.onGround ? (s.p<.1 ? ['THR TO','RWY','SRS'] : ['IDLE','ROLL','—']) : s.pi<=2 ? ['THR CLB','NAV','CLB'] : s.pi===3 ? ['SPEED','NAV','ALT CRZ'] : s.pi===4 ? ['THR IDLE','NAV','DES'] : ['SPEED','LOC','G/S'];
-  fma.forEach((m,i) => txt(ctx, m, x + w*(.2+i*.3), y + h*.05, h*.035, i===0?'#3cff6a':'#3cff6a'));
-  txt(ctx, s.paused ? 'HOLD' : 'AP1', x + w*.92, y + h*.05, h*.032, s.paused ? '#ffd23c' : '#fff');
-  ctx.restore();
-}
-function drawND(ctx, x, y, w, h, s){
-  screenBox(ctx, x, y, w, h);
-  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  const cx = x + w/2, cy = y + h*.86, R = h*.7;
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, R, (-90-50)*D2R, (-90+50)*D2R); ctx.stroke();
-  for(let d=-50; d<=50; d+=5){ const hd = s.hdg + d, a = (d-90)*D2R, r2 = R - ((Math.round(hd)%10===0)?12:6); ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.lineTo(cx+Math.cos(a)*r2, cy+Math.sin(a)*r2); ctx.stroke(); }
-  for(let d=-60; d<=60; d+=10){ const hd = Math.round((s.hdg + d)/10)*10, dd = hd - s.hdg, a = (dd-90)*D2R; if(Math.abs(dd) > 48 || hd%30) continue; txt(ctx, String(((hd%360)+360)%360/10|0), cx+Math.cos(a)*(R-24), cy+Math.sin(a)*(R-24), h*.045, '#fff'); }
-  // anillos de alcance
-  const nmLeft = s.distLeft/1.852, range = [5,10,20,40,80,160,320,640].find(r => r >= nmLeft*1.15) || 640;
-  ctx.setLineDash([4,6]); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(cx, cy, R/2, (-90-50)*D2R, (-90+50)*D2R); ctx.stroke(); ctx.setLineDash([]);
-  txt(ctx, range/2, cx - R/2*.64 - 10, cy - R/2*.77, h*.035, 'rgba(255,255,255,.7)');
-  // ruta
-  const wy = cy - R*Math.min(1, nmLeft/range);
-  ctx.strokeStyle = '#ff5ce1'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, wy); ctx.stroke();
-  ctx.fillStyle = '#ff5ce1'; ctx.beginPath(); ctx.moveTo(cx, wy-7); ctx.lineTo(cx+7, wy); ctx.lineTo(cx, wy+7); ctx.lineTo(cx-7, wy); ctx.closePath(); ctx.fill();
-  txt(ctx, s.d.iata, cx + 14, wy, h*.045, '#ff5ce1', 'left');
-  // avión propio
-  ctx.fillStyle = '#ffd23c'; ctx.beginPath(); ctx.moveTo(cx, cy-12); ctx.lineTo(cx-8, cy+8); ctx.lineTo(cx, cy+3); ctx.lineTo(cx+8, cy+8); ctx.fill();
-  // datos
-  txt(ctx, `GS ${Math.round(s.spd*KT)}  TAS ${Math.round(s.spd*KT*1.02)}`, x+8, y+h*.06, h*.04, '#fff', 'left');
-  txt(ctx, `${Math.round((s.hdg+180)%360)}° / ${8+Math.round(Math.abs(Math.sin(s.t/40))*20)} KT`, x+8, y+h*.12, h*.04, '#3cffff', 'left');
-  txt(ctx, s.d.iata, x+w-8, y+h*.06, h*.045, '#ff5ce1', 'right');
-  txt(ctx, `${nmLeft.toFixed(nmLeft<10?1:0)} NM`, x+w-8, y+h*.12, h*.04, '#fff', 'right');
-  txt(ctx, fmtTimeTZ(Date.now()+s.rem, 0)+'z', x+w-8, y+h*.18, h*.04, '#fff', 'right');
-  txt(ctx, 'HDG ' + String(Math.round(s.hdg)).padStart(3,'0') + ' MAG', cx, y+h*.06, h*.04, '#3cff6a');
-  txt(ctx, `${range} NM`, x+8, y+h*.95, h*.035, 'rgba(255,255,255,.6)', 'left');
-  ctx.restore();
-}
-function gauge(ctx, cx, cy, r, val, max, label, unit, col='#fff'){
-  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI*.8, Math.PI*2.2); ctx.stroke();
-  const a = Math.PI*.8 + Math.PI*1.4*clamp(val/max,0,1);
-  ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI*.8, a); ctx.stroke();
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r); ctx.stroke();
-  txt(ctx, (Math.round(val*10)/10).toFixed(1), cx, cy + r*.55, r*.38, '#3cff6a');
-  txt(ctx, label, cx, cy - r - 8, r*.3, '#9adfff');
-  if(unit) txt(ctx, unit, cx, cy + r*.95, r*.26, 'rgba(255,255,255,.6)');
-}
-function drawEICAS(ctx, x, y, w, h, s){
-  screenBox(ctx, x, y, w, h);
-  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  const r = Math.min(w*.17, h*.17);
-  const fuel0 = s.heli ? 900 : Math.round(s.ac.range*2.2);
-  const fuel = Math.max(fuel0*0.12, fuel0*(1 - 0.85*s.p));
-  if(s.heli){
-    const tq = s.onGround ? (s.p<.02?15:35) : s.pi<=2 ? 88 : s.pi===3 ? 72 : s.pi===4 ? 55 : 80;
-    const jit = Math.sin(s.t*3)*.6;
-    gauge(ctx, x+w*.25, y+h*.25, r, s.p<.01 ? 60+s.p*4000 : 100+jit*.3, 120, 'NR', '%', '#3cff6a');
-    gauge(ctx, x+w*.6, y+h*.25, r, tq+jit, 120, 'TQ', '%');
-    gauge(ctx, x+w*.25, y+h*.62, r*.8, 640+tq*1.6+jit*3, 1000, 'TOT 1', '°C');
-    gauge(ctx, x+w*.6, y+h*.62, r*.8, 635+tq*1.6-jit*3, 1000, 'TOT 2', '°C');
-    txt(ctx, `FUEL ${Math.round(fuel)} KG`, x+w*.85, y+h*.2, h*.04, '#fff');
-    txt(ctx, `OAT ${Math.round(15 - s.alt*0.002)}°`, x+w*.85, y+h*.3, h*.04, '#fff');
-    txt(ctx, `NG ${(92+tq*.08).toFixed(1)}%`, x+w*.85, y+h*.4, h*.04, '#3cff6a');
-  } else {
-    const n1 = s.onGround ? (s.p<.1 && s.spd>40 ? 93 : 22) : s.pi<=2 ? 92 : s.pi===3 ? 86 : s.pi===4 ? 42 : 61;
-    const jit = Math.sin(s.t*2)*.3;
-    gauge(ctx, x+w*.25, y+h*.25, r, n1+jit, 110, 'N1', '%', '#3cff6a');
-    gauge(ctx, x+w*.6, y+h*.25, r, n1-jit, 110, 'N1', '%', '#3cff6a');
-    gauge(ctx, x+w*.25, y+h*.62, r*.8, 420+n1*4+jit*5, 1000, 'EGT', '°C');
-    gauge(ctx, x+w*.6, y+h*.62, r*.8, 418+n1*4-jit*5, 1000, 'EGT', '°C');
-    txt(ctx, `FOB ${Math.round(fuel).toLocaleString('es-ES')} KG`, x+w*.86, y+h*.18, h*.04, '#fff');
-    txt(ctx, `CAB ALT ${Math.round(Math.min(6000, s.alt*0.14))}`, x+w*.86, y+h*.27, h*.04, '#fff');
-    const flaps = s.onGround || s.p > .95 ? (s.p>.5?'FULL':'15') : s.p < .12 ? '15' : 'UP';
-    txt(ctx, `FLAPS ${flaps}`, x+w*.86, y+h*.36, h*.04, flaps==='UP' ? '#fff' : '#3cffff');
-  }
-  const gearDown = s.alt < 1800 || s.onGround;
-  ctx.fillStyle = gearDown ? '#3cff6a' : '#555'; ['L','N','R'].forEach((g,i) => { ctx.fillRect(x+w*(.77+i*.07), y+h*.5, w*.055, h*.07); txt(ctx, g, x+w*(.797+i*.07), y+h*.535, h*.035, '#000'); });
-  txt(ctx, gearDown ? 'GEAR DOWN' : 'GEAR UP', x+w*.86, y+h*.62, h*.035, gearDown ? '#3cff6a' : '#aaa');
-  // mensajes
-  const msgs = s.paused ? ['HOLDING PATTERN'] : s.f.breakUntil ? ['CABIN BREAK'] : s.pi===3 ? ['AP ENGAGED','CRZ'] : s.pi>=4 ? ['APPROACH','SEAT BELTS'] : ['T/O CONFIG OK'];
-  msgs.forEach((m,i) => txt(ctx, m, x+w*.06, y+h*(.86+i*.07), h*.04, i ? '#3cffff' : '#3cff6a', 'left'));
-  ctx.restore();
-}
-
-/* =================================================================
-   VISTA CABINA
-   ================================================================= */
-function drawCockpit(ctx, W, H, s){
-  const heli = s.heli, mil = s.mil;
-  const small = W < 820;
-  const portrait = H > W*1.1;
-  const wsH = H*(portrait ? (heli ? .42 : .38) : (heli ? .62 : .54));
-  const vib = heli && !s.onGround ? Math.sin(s.t*47)*1 : 0;
-  ctx.save(); ctx.translate(0, vib);
-  const sk = drawFrontScene(ctx, 0, 0, W, wsH*1.05, s);
-  // marco del parabrisas
-  const frame = mil ? '#2b2f25' : '#15171b';
-  ctx.fillStyle = frame;
-  if(heli){
-    ctx.fillRect(0, 0, W, H*.03);
-    ctx.beginPath(); ctx.moveTo(W*.5-8, 0); ctx.lineTo(W*.5+8, 0); ctx.lineTo(W*.5+5, wsH); ctx.lineTo(W*.5-5, wsH); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W*.06, 0); ctx.lineTo(W*.02, wsH); ctx.lineTo(0, wsH); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W*.94, 0); ctx.lineTo(W*.98, wsH); ctx.lineTo(W, wsH); ctx.fill();
-  } else {
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(W,0); ctx.lineTo(W, H*.06); ctx.quadraticCurveTo(W*.5, H*.1, 0, H*.06); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W*.5-14, H*.07); ctx.lineTo(W*.5+14, H*.07); ctx.lineTo(W*.5+9, wsH); ctx.lineTo(W*.5-9, wsH); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(0, H*.06); ctx.lineTo(W*.13, H*.08); ctx.lineTo(W*.05, wsH); ctx.lineTo(0, wsH); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W, H*.06); ctx.lineTo(W*.87, H*.08); ctx.lineTo(W*.95, wsH); ctx.lineTo(W, wsH); ctx.fill();
-  }
-  // reflejo
-  const rg = ctx.createLinearGradient(0,0,W,wsH); rg.addColorStop(0,'rgba(255,255,255,.04)'); rg.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=rg; ctx.fillRect(0,0,W,wsH);
-  // visera (glareshield) con panel de piloto automático
-  const gsY = wsH, gsH = H*.06;
-  ctx.fillStyle = mil ? '#24281f' : '#1c1e23'; ctx.beginPath(); ctx.moveTo(0, gsY); ctx.quadraticCurveTo(W*.5, gsY-H*.03, W, gsY); ctx.lineTo(W, gsY+gsH); ctx.lineTo(0, gsY+gsH); ctx.fill();
-  const apW = Math.min(W*.6, 760), apX = (W-apW)/2, apY = gsY + gsH*.18, apH = gsH*.64;
-  ctx.fillStyle = '#2d3038'; ctx.fillRect(apX, apY, apW, apH);
-  const fields = heli ? [['IAS', Math.round(s.f && acOf(s.f).speed*KT)], ['HDG', String(Math.round(s.hdg)).padStart(3,'0')], ['ALT', Math.round(s.f.alt)], ['VS', Math.round(s.vs/100)*100], ['AP', s.paused?'HOLD':'ON']]
-    : [['SPD', s.pi===3 ? '.'+Math.round(s.spd*KT/600*100) : Math.round(s.spd*KT)], ['HDG', String(Math.round(s.hdg)).padStart(3,'0')], ['ALT', s.pi<=3 ? 'FL'+(s.f.alt/100) : Math.round(Math.max(2000,s.alt)/100)*100], ['V/S', Math.round(s.vs/100)*100], ['AP1', s.paused?'HOLD':'ON']];
-  fields.forEach((fd,i) => { const fx = apX + apW*(i+.5)/fields.length; txt(ctx, fd[0], fx, apY+apH*.28, apH*.24, '#c9ccd3', 'center', 'Manrope'); txt(ctx, fd[1], fx, apY+apH*.68, apH*.36, '#ffb547'); });
-  // panel principal
-  const pY = gsY + gsH, pH = H - pY;
-  const pg = ctx.createLinearGradient(0, pY, 0, H); pg.addColorStop(0, mil ? '#30352a' : '#23262c'); pg.addColorStop(1, mil ? '#1c1f18' : '#121418');
-  ctx.fillStyle = pg; ctx.fillRect(0, pY, W, pH);
-  // pantallas
-  const order = portrait ? ['pfd','nd','eng', heli ? null : 'pfd2'].filter(Boolean).slice(0, heli ? 3 : 4) : (heli ? ['pfd','nd','eng'] : ['pfd','nd','eng','pfd2']);
-  const scr = order.length, cols = portrait ? 2 : scr, rowsN = Math.ceil(scr/cols);
-  const gap = W*.015;
-  let sw = Math.min((W - gap*(cols+1))/cols, (pH*.86/rowsN)*1.25);
-  let sh = Math.min(sw*.82, pH*.86/rowsN - gap);
-  const totalW = sw*cols + gap*(cols-1), sx0 = (W-totalW)/2, sy = pY + pH*.04;
-  order.forEach((k,i) => {
-    const col = i % cols, row = Math.floor(i/cols);
-    const lastRowCount = scr - Math.floor((scr-1)/cols)*cols;
-    const rowOff = (row === rowsN-1 && lastRowCount < cols) ? (cols-lastRowCount)*(sw+gap)/2 : 0;
-    const xx = sx0 + col*(sw+gap) + rowOff, yy = sy + row*(sh+gap);
-    const sy_ = yy;
-    if(k==='pfd' || k==='pfd2') drawPFD(ctx, xx, sy_, sw, sh, s);
-    else if(k==='nd') drawND(ctx, xx, sy_, sw, sh, s);
-    else drawEICAS(ctx, xx, sy_, sw, sh, s);
-  });
-  const screensBottom = sy + rowsN*(sh+gap) - gap;
-  // pedestal y mandos bajo las pantallas
-  const below = screensBottom + pH*.04, room = H - below;
-  if(room > 26){
-    ctx.fillStyle = 'rgba(255,255,255,.07)';
-    for(let i=0;i<24;i++){ ctx.beginPath(); ctx.arc(sx0 + (i/23)*totalW, below - pH*.02, 2.5, 0, 7); ctx.fill(); }
-    const pw = Math.min(W*.16, 220), px = W/2 - pw/2;
-    ctx.fillStyle = '#16171b'; ctx.fillRect(px, below, pw, room);
-    if(heli){
-      txt(ctx, s.f.callsign, W/2, below + Math.min(room*.5, 22), Math.min(16, room*.4), '#ffb547');
-      // collective (izq.) y cíclico (centro) asomando
-      ctx.fillStyle = '#0c0d10'; ctx.fillRect(px - pw*.5, H - room*.6, pw*.25, room*.6);
-      ctx.beginPath(); ctx.arc(px - pw*.38, H - room*.62, Math.min(14, room*.25), 0, 7); ctx.fill();
-    } else {
-      const thr = s.onGround ? (s.p<.1 && s.spd>40 ? .9 : .1) : s.pi<=2 ? .85 : s.pi===3 ? .7 : .25;
-      [W/2 - pw*.18, W/2 + pw*.18].forEach(xx => { ctx.fillStyle='#2b2d33'; ctx.fillRect(xx-3, below+6, 6, room-6); ctx.fillStyle='#d9dbe0'; ctx.fillRect(xx-10, below + 6 + (room-20)*(1-thr), 20, 12); });
-      txt(ctx, 'THR', W/2, below + room - 8, 9, 'rgba(255,255,255,.4)');
-    }
-  }
-  // placa de la aeronave
-  txt(ctx, `${s.ac.name.toUpperCase()} · ${s.f.reg}`, 14, H - 12, Math.max(9, H*.013), 'rgba(255,255,255,.35)', 'left', 'Manrope');
-  // luz ambiente nocturna en el panel
-  if(sk.light < .4){ ctx.fillStyle = `rgba(0,0,0,${(.4-sk.light)*.4})`; ctx.fillRect(0, pY, W, pH); }
-  ctx.restore();
-}
-
-/* =================================================================
    TABLET DEL PASAJERO
    ================================================================= */
 function tabletHTML(){
@@ -743,7 +428,7 @@ function frame(ts){
   }
   const ctx = V.ctx; ctx.setTransform(V.dpr,0,0,V.dpr,0,0);
   ctx.clearRect(0,0,V.w,V.h);
-  if(V.mode==='window') drawWindow(ctx, V.w, V.h, s); else drawCockpit(ctx, V.w, V.h, s);
+  drawWindow(ctx, V.w, V.h, s);
   updateTablet(false);
   updateBar(s);
   V.raf = requestAnimationFrame(frame);
@@ -756,7 +441,7 @@ function updateBar(s){
 }
 function setView(m){
   V.mode = m; LS.set('vp_view', m);
-  document.body.classList.remove('view-map','view-window','view-cockpit');
+  document.body.classList.remove('view-map','view-window');
   document.body.classList.add('view-'+m);
   document.querySelectorAll('#viewSwitch button').forEach(b => b.classList.toggle('on', b.dataset.v===m));
   if(m==='map'){ if(V.raf) cancelAnimationFrame(V.raf); V.raf=null; if(typeof map!=='undefined' && map) setTimeout(()=>{ map.invalidateSize(); fitRoute(); }, 50); return; }
@@ -775,15 +460,15 @@ function init(){
     const sv = e.target.closest('.tb-svc button'); if(sv){ service(sv.dataset.s); }
   });
   $('tabToggle').onclick = () => document.body.classList.toggle('tablet-min');
-  $('viewSwitch').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if(b && flight && flight.start) setView(b.dataset.v); });
+  $('viewSwitch').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if(b && flight && flight.start && ['map','window'].includes(b.dataset.v)) setView(b.dataset.v); });
   $('vbPause').onclick = () => togglePause();
   $('vbNoise').onclick = () => setNoise(!noise);
   window.addEventListener('resize', () => { if(V.mode!=='map') resize(); });
   document.addEventListener('visibilitychange', () => { V.last = 0; });
 }
 window.VPV = {
-  enter(){ const m = LS.get('vp_view','map'); setView(['map','window','cockpit'].includes(m) ? m : 'map'); },
-  exit(){ V.mode='map'; if(V.raf) cancelAnimationFrame(V.raf); V.raf=null; document.body.classList.remove('view-window','view-cockpit'); document.body.classList.add('view-map'); V.tabFor=null; },
+  enter(){ const m = LS.get('vp_view','map'); setView(m==='window' ? 'window' : 'map'); },
+  exit(){ V.mode='map'; if(V.raf) cancelAnimationFrame(V.raf); V.raf=null; document.body.classList.remove('view-window'); document.body.classList.add('view-map'); V.tabFor=null; },
   set: setView,
   get mode(){ return V.mode; },
 };
