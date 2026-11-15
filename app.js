@@ -676,7 +676,8 @@ function announcements(p, el){
   const every = Math.min(25, Math.max(8, f.mins/6)) * 60000;
   if(pi===3){
     if(!f.nextMsg) f.nextMsg = el + every;
-    if(el >= f.nextMsg){
+    if(el >= f.nextMsg && f.dnd){ f.nextMsg = el + every; }
+    else if(el >= f.nextMsg){
       f.nextMsg = el + every;
       const pool = [
         ['fa', `Le traigo ${f.catering}. Coma algo, el cerebro también necesita combustible.`],
@@ -727,8 +728,10 @@ function enterFlightMode(){
   const rk = flight.crew.rk || { c:'Cmdte.', f:heli?'Copiloto':'1.er Of.', a:'TCP' };
   $('crewline').innerHTML = `${ac.name} <b>${flight.reg}</b> · ${rk.c} <b>${flight.crew.captain}</b> · ${rk.f} <b>${flight.crew.fo}</b> · ${rk.a} <b>${flight.crew.fa}</b>`;
   drawRoute(false); fitRoute(); renderPA(); keepAwake(); tick(true);
+  if(window.VPV) VPV.enter();
 }
 function exitFlightMode(){
+  if(window.VPV) VPV.exit();
   document.body.classList.remove('flying');
   if(map && !map.hasLayer(airportLayer)) airportLayer.addTo(map);
   follow=false; $('bFollow').classList.remove('on');
@@ -801,6 +804,17 @@ async function quitFlight(){
   toast('Vuelo cancelado. Puede corregir el plan y volver a despegar.');
 }
 function profile(p){
+  const r = profileRaw(p);
+  if(p > .5 && flight){ // senda de planeo: 3° en jets, ~8° en helicópteros
+    const remM = flight.dist*1000*(1-p), ac = acOf(flight);
+    const heli = ac.kind==='heli', cap = remM * (heli ? 0.14 : 0.0524) / 0.3048;
+    const pApp = heli ? .90 : .95;
+    if(p >= pApp) r.alt = Math.max(0, Math.min(cap, profileRaw(pApp).alt));   // en final, sobre la senda
+    else if(r.alt > cap) r.alt = Math.max(0, cap);
+  }
+  return r;
+}
+function profileRaw(p){
   const ac=acOf(flight), cr=flight.alt, v=ac.speed;
   if(ac.kind==='heli'){
     if(p<.02) return { alt:0, spd:0 };
