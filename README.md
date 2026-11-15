@@ -17,11 +17,6 @@ Temporizador de estudio con simulador de vuelo en jet privado. Sin registros, si
 - **Pausa (circuito de espera)**, **desvío** del vuelo y recuperación automática del vuelo si recargas la página.
 - **Bitácora y Club Vuelo Privado**: horas, km y destinos acumulados, con niveles Silver → Gold → Platinum → Black → Infinite.
 
-## Vistas inmersivas
-
-- **Mapa**: la ruta en línea recta con el avión o helicóptero avanzando.
-- **Ventanilla**: lo que ves desde tu asiento, con el cielo según la hora y la posición real del sol, nubes, terreno, luces de ciudades de noche, el ala con sus luces (jets) o la sombra de las palas (helicópteros). Cambia según la aeronave: jet privado, avión militar o helicóptero. Delante tienes una **tablet** con el vuelo, el mapa, el destino, la tripulación y un menú de **servicio** para pedir cosas a la azafata.
-
 Atajo: `Espacio` pausa o reanuda el vuelo.
 
 ## Publicación

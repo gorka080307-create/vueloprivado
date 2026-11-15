@@ -1,8 +1,8 @@
 /* Vuelo Privado · service worker: funciona sin conexión */
-const SHELL = 'vp-shell-v12';
+const SHELL = 'vp-shell-v13';
 const CDN = 'vp-cdn-v1';
 const TILES = 'vp-tiles-v1';
-const SHELL_FILES = ['./', './index.html', './data.js', './app.js', './views.js', './manifest.json', './icon.svg'];
+const SHELL_FILES = ['./', './index.html', './data.js', './app.js', './manifest.json', './icon.svg'];
 const MAX_TILES = 800;
 
 self.addEventListener('install', e => {
