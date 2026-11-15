@@ -277,7 +277,7 @@ function drawRoute(fit=true){
   const o=AP[S.origin], d=AP[S.dest];
   drawHistory();
   if(!o) return;
-  if(!d){ routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')})); if(fit) map.flyTo([o.lat,o.lon],5,{duration:.8}); return; }
+  if(!d){ routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')})); if(fit && mapReady()) { try{ map.flyTo([o.lat,o.lon],5,{duration:.8}); }catch(e){} } return; }
   [routeA, routeB] = routeLatLngs(o,d);
   routeLayer.addLayer(L.polyline([routeA,routeB], { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
   flownGlow = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:10, opacity:.18, lineCap:'round' });
@@ -290,19 +290,20 @@ function drawRoute(fit=true){
   routeLayer.addLayer(planeMarker);
   if(fit) fitRoute();
 }
+function mapReady(){ const z = map && map.getSize(); return !!(z && z.x > 0 && z.y > 0); }
 function fitRoute(){
-  if(!map || !routeA) return;
+  if(!map || !routeA || !mapReady()) return;
   const small = window.innerWidth < 820;
   const pd = flight && flight.start
     ? { paddingTopLeft:[40,small?200:140], paddingBottomRight:[40,small?300:230] }
     : { paddingTopLeft:[small?40:460,110], paddingBottomRight:[60,small?(window.innerHeight*.6):60] };
-  map.fitBounds(L.latLngBounds([routeA,routeB]), { ...pd, maxZoom:9 });
+  try{ map.fitBounds(L.latLngBounds([routeA,routeB]), { ...pd, maxZoom:9 }); }catch(e){}
 }
 function updatePlane(p){
   if(!map || !planeMarker) return;
   const pos = posAt(p);
   planeMarker.setLatLng(pos); flownLine.setLatLngs([routeA,pos]); flownGlow.setLatLngs([routeA,pos]);
-  if(follow) map.panTo(pos, { animate:true, duration:.8 });
+  if(follow && mapReady()) map.panTo(pos, { animate:true, duration:.8 });
 }
 
 /* =================== PLANIFICADOR =================== */
