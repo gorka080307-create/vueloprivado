@@ -25,6 +25,10 @@ Temporizador de estudio con simulador de vuelo en jet privado. Sin registros, si
 - El plan de vuelo aparece en el planificador y en la tarjeta de embarque. En el HUD se ve el próximo punto de la ruta.
 - Los helicópteros vuelan en VFR directo. Hay una opción para volver a la línea recta.
 
+## Cambiar de destino en vuelo
+
+Con el botón **🔀 Destino** puedes cambiar de destino en pleno vuelo. La nueva ruta se calcula desde la posición real del avión (sin saltos de altitud ni velocidad), con la pista de llegada según el viento, y el tiempo restante se recalcula desde ese punto. En el mapa queda la ruta completa: el tramo ya volado desde el despegue, el punto del desvío y el nuevo tramo hasta el aterrizaje. Se proponen los aeródromos más cercanos, como en un desvío real.
+
 Atajo: `Espacio` pausa o reanuda el vuelo.
 
 ## Publicación

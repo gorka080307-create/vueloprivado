@@ -281,6 +281,7 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
 .wp .wp-vor{position:absolute;left:-6px;top:-6px;width:12px;height:12px;background:#0b0d12;border:2px solid #7fc8ff;clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
 .wp .wp-vor{border:none;background:#7fc8ff}
 .wp .wp-gc{position:absolute;left:-4px;top:-4px;width:8px;height:8px;transform:rotate(45deg);background:#c9b8ff}
+.wp .wp-cur{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#ff9f43;box-shadow:0 0 0 3px rgba(255,159,67,.3)}
 .wp .wp-fix{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#f1d9a4}
 .wp span{position:absolute;left:9px;top:-8px;font-family:var(--mono);font-size:10px;font-weight:600;color:#cfe8ff;background:rgba(8,10,14,.75);padding:1px 4px;border-radius:4px;white-space:nowrap}
 .rw-lbl span{position:absolute;transform:translate(-50%,-150%);font-family:var(--mono);font-size:11px;font-weight:700;color:#0b0d12;background:#fff;padding:1px 5px;border-radius:4px;white-space:nowrap}
@@ -417,10 +418,11 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
     <button class="hbtn" id="bPause">⏸ Pausar</button>
     <button class="hbtn" id="bNoise">🔈 Sonido de cabina</button>
     <label class="hbtn vol" title="Volumen">🎚️ <input type="range" id="vol" min="0" max="1" step="0.05"></label>
-    <button class="hbtn" id="bFollow">🎯 Seguir avión</button>
+    <button class="hbtn" id="bFollow" title="Seguir el avión en el mapa">🎯 Seguir</button>
     <button class="hbtn" id="bPass">🎫 Tarjeta</button>
+    <button class="hbtn" id="bDivert" title="Cambiar de destino en pleno vuelo">🔀 Destino</button>
     <button class="hbtn" id="bFull" title="Pantalla completa">⛶</button>
-    <button class="hbtn danger" id="bAbort" title="Desviar: guarda el tiempo estudiado">⚠️ Desviar</button>
+    <button class="hbtn danger" id="bAbort" title="Terminar el vuelo ahora y guardar el tiempo estudiado">🛑 Terminar</button>
   </div>
   <div class="crewline" id="crewline"></div>
 </section>
@@ -465,6 +467,16 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
   <div class="pp-stamps" id="ppStamps"></div>
   <div id="ppBases"></div>
   <div class="modal-actions"><button class="btn btn-ghost" data-close>Cerrar</button></div>
+</div></div>
+
+<div class="modal" id="mDivert"><div class="modal-box panel" style="max-width:560px">
+  <div class="modal-title">🔀 Cambiar destino</div>
+  <div class="modal-sub" id="dvSub"></div>
+  <div class="field"><label>Nuevo destino</label><input class="inp" id="inDivert" autocomplete="off" placeholder="Ciudad, aeropuerto o código"><div class="combo-list" id="lsDivert" hidden></div></div>
+  <div class="h-sec" style="margin-top:16px">Aeródromos más cercanos</div>
+  <div class="sugg" id="dvNear"></div>
+  <div id="dvPrev"></div>
+  <div class="modal-actions"><button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-gold" id="dvGo" disabled>🔀 Cambiar destino</button></div>
 </div></div>
 
 <div class="modal" id="mConfirm"><div class="modal-box panel" style="max-width:440px;text-align:center">

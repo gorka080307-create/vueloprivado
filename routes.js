@@ -95,17 +95,18 @@ function oceanicName(p){
 }
 
 /* ---------- construcción de la ruta ---------- */
-function buildRoute(oCode, dCode, ac, mode){
-  const o = AP[oCode], d = AP[dCode];
+function buildRoute(oCode, dCode, ac, mode, startPt){
+  const o = startPt ? { lat:startPt.lat, lon:startPt.lon, iata:'POS', city:'Posición actual' } : AP[oCode], d = AP[dCode];
   const P = (lat, lon, name, kind, label) => ({ lat, lon, name, kind, label: label||'' });
+  const first = () => startPt ? P(o.lat, o.lon, 'DESVÍO', 'cur', 'Cambio de destino') : P(o.lat,o.lon,o.iata,'apt',o.city);
   const direct = () => {
-    const pts=[P(o.lat,o.lon,o.iata,'apt',o.city), P(d.lat,d.lon,d.iata,'apt',d.city)];
+    const pts=[first(), P(d.lat,d.lon,d.iata,'apt',d.city)];
     return finish({ pts, dep:null, arr:null, vfr: ac.kind==='heli' });
   };
   if(ac.kind==='heli' || mode==='direct') return direct();
 
   const gcBrg = gcBearing(o,d), total = gcDist(o,d);
-  const dep = pickRunway(oCode, 'dep', null, gcBrg);
+  const dep = startPt ? null : pickRunway(oCode, 'dep', null, gcBrg);
   const arr = pickRunway(dCode, 'arr', null, gcBrg);
   const pts=[];
   // salida
@@ -117,7 +118,7 @@ function buildRoute(oCode, dCode, ac, mode){
     A = gcDest(dep.far, dep.hdg, climbKm);
     pts.push(P(A.lat, A.lon, `D${dep.id}`, 'sid', `Salida pista ${dep.id}`));
   } else {
-    pts.push(P(o.lat,o.lon,o.iata,'apt',o.city)); A = { lat:o.lat, lon:o.lon };
+    pts.push(first()); A = { lat:o.lat, lon:o.lon };
   }
   // llegada (se calcula ya para saber dónde termina el tramo en ruta)
   let arrPts=[], B;
@@ -165,13 +166,13 @@ function buildRoute(oCode, dCode, ac, mode){
     let dist=0; r.cum=[0];
     for(let i=1;i<r.pts.length;i++){ dist+=gcDist(r.pts[i-1], r.pts[i]); r.cum.push(dist); }
     r.dist = dist;
-    const icaoO = (RUNWAYS[oCode]?.icao) || o.iata, icaoD = (RUNWAYS[dCode]?.icao) || d.iata;
+    const icaoO = startPt ? 'DESVÍO' : ((RUNWAYS[oCode]?.icao) || o.iata), icaoD = (RUNWAYS[dCode]?.icao) || d.iata;
     const mid = r.pts.filter(p => p.kind==='vor' || p.kind==='gc').map(p => p.name);
     r.str = r.vfr ? `${icaoO} VFR DCT ${icaoD}` :
       `${icaoO}${r.dep?'/'+r.dep.id:''} ${mid.length ? 'DCT ' + mid.join(' DCT ') + ' ' : ''}DCT ${icaoD}${r.arr?'/'+r.arr.id:''}`;
     const midS = mid.length > 12 ? [...mid.slice(0,6), '…', ...mid.slice(-4)] : mid;
     r.strShort = r.vfr ? r.str : `${icaoO}${r.dep?'/'+r.dep.id:''} ${midS.length ? midS.join(' ') + ' ' : ''}${icaoD}${r.arr?'/'+r.arr.id:''}`;
-    r.wind = { o: WIND[oCode]||null, d: WIND[dCode]||null };
+    r.wind = { o: startPt ? null : (WIND[oCode]||null), d: WIND[dCode]||null };
     return r;
   }
 }
@@ -192,3 +193,19 @@ function nextWaypoint(route, p){
 function packRoute(r){ return { pts:r.pts.map(p=>[+p.lat.toFixed(5), +p.lon.toFixed(5), p.name, p.kind, p.label]), cum:r.cum.map(x=>+x.toFixed(2)), dist:r.dist, str:r.str, strShort:r.strShort, vfr:r.vfr,
   dep: r.dep ? { id:r.dep.id, hdg:r.dep.hdg, len:r.dep.len } : null, arr: r.arr ? { id:r.arr.id, hdg:r.arr.hdg, len:r.arr.len } : null, wind:r.wind }; }
 function unpackRoute(r){ if(!r) return null; return { ...r, pts: r.pts.map(a => ({ lat:a[0], lon:a[1], name:a[2], kind:a[3], label:a[4] })) }; }
+
+/* recalcula distancias acumuladas tras unir tramos */
+function recomputeRoute(r){
+  for(let i=1;i<r.pts.length;i++){ let dl=r.pts[i].lon-r.pts[i-1].lon; while(dl>180){ r.pts[i].lon-=360; dl-=360; } while(dl<-180){ r.pts[i].lon+=360; dl+=360; } }
+  let dist=0; r.cum=[0];
+  for(let i=1;i<r.pts.length;i++){ dist+=gcDist(r.pts[i-1], r.pts[i]); r.cum.push(dist); }
+  r.dist=dist; return r;
+}
+/* punto exacto a lo largo de la ruta (fracción de distancia) */
+function routePointAt(r, frac){
+  const { i, f } = routeSegAt(r, frac);
+  const a = r.pts[i-1], b = r.pts[i];
+  const q = gcInterp({ lat:a.lat, lon:a.lon }, { lat:b.lat, lon:b.lon }, f);
+  q.lon += 360*Math.round((a.lon + (b.lon-a.lon)*f - q.lon)/360);   // mantener la misma "copia" del mundo
+  return { ...q, seg:i };
+}

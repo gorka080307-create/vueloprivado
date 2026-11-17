@@ -115,14 +115,21 @@ const saveFlight = () => flight ? LS.set('vp_active', Object.fromEntries(Object.
 const saveLog = () => LS.set('vp_log', log);
 const acOf = f => ACF[f.ac] || AIRCRAFT[0];
 /* límites de fase en tiempo absoluto realista (se comprimen solo en vuelos cortos) */
+function phaseMinutes(f, D){
+  D = D || f.durMs/60000;
+  const heli = acOf(f).kind==='heli';
+  const m = heli ? [2, .6, 3, 4, 1.6] : [5, 2, 18, 22, 7];      // rodaje/arranque, despegue, ascenso, descenso, aproximación (min)
+  const sum = m.reduce((a,b)=>a+b,0), k = Math.min(1, (heli?.65:.75)*D/sum);
+  return m.map(x => x*k);
+}
+function boundsFrom(m, D){
+  const b0=m[0]/D, b1=b0+m[1]/D, b4=1-m[4]/D, b3=Math.max(b1, b4-m[3]/D), b2=Math.min(b1+m[2]/D, b3);
+  return [b0, b1, b2, b3, b4, 1.01];
+}
 function phaseBounds(f){
   if(f._pb) return f._pb;
-  const D = f.durMs/60000, heli = acOf(f).kind==='heli';
-  let m = heli ? [2, .6, 3, 4, 1.6] : [5, 2, 18, 22, 7];      // rodaje/arranque, despegue, ascenso, descenso, aproximación (min)
-  const sum = m.reduce((a,b)=>a+b,0), k = Math.min(1, (heli?.65:.75)*D/sum);
-  m = m.map(x => x*k/D);
-  const b0=m[0], b1=b0+m[1], b2=b1+m[2], b4=1-m[4], b3=b4-m[3];
-  return (f._pb = [b0, b1, b2, b3, b4, 1.01]);
+  if(!f.pm) f.pm = phaseMinutes(f);
+  return (f._pb = boundsFrom(f.pm, f.durMs/60000));
 }
 const phasesOf = f => { const b=phaseBounds(f); return (acOf(f).kind==='heli' ? PHASES_HELI : PHASES_JET).map((x,i) => ({ ...x, to:b[i] })); };
 
@@ -304,19 +311,23 @@ let routeLL=[], curSeg=-1;
 const RP_N = 600;
 function progressTable(){
   if(flight._rpt) return flight._rpt;
-  const pT = phaseBounds(flight)[0];      // rodaje / arranque de rotores: aún no se recorre la ruta
+  const D = flight.durMs/60000;
+  const pT = flight.rr ? flight.rr.t/D : phaseBounds(flight)[0];   // rodaje (o momento del desvío): desde aquí se recorre la ruta
+  const base = flight.rr ? flight.rr.d : 0;
   const cum=[0]; let prev=Math.max(0, profileRaw(pT).spd);
   for(let k=1;k<=RP_N;k++){ const v=Math.max(0, profileRaw(pT+(1-pT)*k/RP_N).spd); cum.push(cum[k-1] + (prev+v)/2); prev=v; }
-  return (flight._rpt = { pT, cum, tot: cum[RP_N] || 1 });
+  return (flight._rpt = { pT, cum, tot: cum[RP_N] || 1, base });
 }
 function rp(p){
   if(!flight || !flight.start) return 0;
-  const t = progressTable(); if(p <= t.pT) return 0; if(p >= 1) return 1;
+  const t = progressTable(), dist = flight.dist || 1, b0 = t.base/dist;
+  if(p <= t.pT) return b0; if(p >= 1) return 1;
   const x=(p-t.pT)/(1-t.pT)*RP_N, i=Math.floor(x), f=x-i;
-  return Math.min(1, (t.cum[i] + ((t.cum[i+1]??t.cum[i]) - t.cum[i])*f) / t.tot);
+  return Math.min(1, b0 + (1-b0) * (t.cum[i] + ((t.cum[i+1]??t.cum[i]) - t.cum[i])*f) / t.tot);
 }
 function taxiInfo(p){   // fase de rodaje: de la plataforma al umbral de la pista
   if(!flight || !flight.start || routeLL.length < 2) return null;
+  if(flight.rr) return null;
   const t = progressTable(); if(p >= t.pT) return null;
   const o = AP[flight.from], apron = L.latLng(o.lat, o.lon + 360*Math.round((routeLL[0].lng - o.lon)/360));
   const r = activeRoute(); if(!r || !r.dep) return { pos: routeLL[0], a: routeLL[0], b: routeLL[1] };
@@ -343,8 +354,8 @@ function vehicleHTML(kind, seg, A, B){
   return `<div style="transform:rotate(${ang+45}deg)">✈️</div>`; // ✈️ apunta al noreste
 }
 function wptIcon(p){
-  const cls = p.kind==='vor' ? 'wp-vor' : p.kind==='gc' ? 'wp-gc' : 'wp-fix';
-  const lbl = p.kind==='vor' || p.kind==='gc' ? p.name : p.kind==='faf' ? 'FAF' : p.kind==='star' ? 'IAF' : p.kind==='sid' ? 'SID' : '';
+  const cls = p.kind==='vor' ? 'wp-vor' : p.kind==='gc' ? 'wp-gc' : p.kind==='cur' ? 'wp-cur' : 'wp-fix';
+  const lbl = p.kind==='vor' || p.kind==='gc' ? p.name : p.kind==='faf' ? 'FAF' : p.kind==='star' ? 'IAF' : p.kind==='sid' ? 'SID' : p.kind==='cur' ? '🔀 DESVÍO' : '';
   return L.divIcon({ className:'wp', iconSize:[0,0], html:`<div class="${cls}"></div>${lbl?`<span>${lbl}</span>`:''}` });
 }
 function drawRunways(code, active){
@@ -374,7 +385,7 @@ function drawRoute(fit=true){
   routeLayer.addLayer(L.polyline(routeLL, { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
   if(r){
     drawRunways(S.origin, r.dep); drawRunways(S.dest, r.arr);
-    r.pts.forEach(q => { if(['vor','gc','faf','star','sid'].includes(q.kind)) routeLayer.addLayer(L.marker([q.lat,q.lon], { icon:wptIcon(q), interactive:false })); });
+    r.pts.forEach(q => { if(['vor','gc','faf','star','sid','cur'].includes(q.kind)) routeLayer.addLayer(L.marker([q.lat,q.lon], { icon:wptIcon(q), interactive:false })); });
   }
   flownGlow = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:10, opacity:.18, lineCap:'round' });
   flownLine = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:3.5, opacity:1 });
@@ -433,6 +444,7 @@ function syncInputs(){
   $('inDest').value = d ? `${d.iata} · ${d.city}` : '';
 }
 window.pickAirport = function(key, iata){
+  if(key==='divert'){ divertPreview(iata); return; }
   if(flight && flight.start) return;
   if(key==='origin' && iata===S.dest) S.dest=S.origin;
   if(key==='dest' && iata===S.origin){ toast('El destino debe ser distinto del origen'); return; }
@@ -597,7 +609,7 @@ function passHTML(f){
         <div><div class="bp-k">Azafata · TCP</div><div class="bp-v">${rk.a?rk.a+' ':''}${f.crew.fa}</div></div>
       </div>
       <div class="bp-foot">
-        <div>Catering a bordo: <b>${f.catering}</b></div>
+        <div>Catering a bordo: <b>${f.catering}</b>${f.divertedFrom?`<br>↪ <b>Desviado en vuelo</b> · destino previsto: ${f.divertedFrom}`:''}</div>
         <div style="text-align:right">Meteo en ${d.city}${f.meteo.live?' (en vivo)':'*'}: <b>${f.meteo.t}°C · ${f.meteo.sky}</b></div>
       </div>
     </div>
@@ -887,7 +899,7 @@ function startBreak(){
 }
 function addLog(status){
   const f=flight, el=elapsedMs(f), p=Math.min(1,el/f.durMs);
-  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*p), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:{...f, _route:undefined, msgs:[], said:{}} };
+  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*rp(p)), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:Object.fromEntries(Object.entries({...f, msgs:[], said:{}}).filter(([k]) => k[0] !== '_')) };
   log.unshift(entry); saveLog(); updateTier();
   return entry;
 }
@@ -914,13 +926,13 @@ function land(){
   openModal('mLand');
 }
 async function abort(){
-  const ok = await confirmBox('¿Desviar el vuelo?', 'El tiempo estudiado hasta ahora se guardará en su bitácora como vuelo desviado.', 'Desviar');
+  const ok = await confirmBox('¿Terminar el vuelo aquí?', 'El tiempo estudiado hasta ahora se guardará en su bitácora como vuelo interrumpido.', 'Terminar');
   if(!ok || !flight) return;
   const f=flight; addLog('ko');
   flight=null; saveFlight();
   S.origin=f.from; S.dest=f.to;
   exitFlightMode(); syncInputs(); renderPlan(); drawRoute(true);
-  toast('Vuelo desviado. Registrado en la bitácora.');
+  toast('Vuelo interrumpido. Registrado en la bitácora.');
 }
 async function quitFlight(){
   const ok = await confirmBox('¿Salir del vuelo?', 'Se abandona el vuelo sin guardarlo en la bitácora ni contar el tiempo. Útil si se ha equivocado de destino o aeronave.', 'Salir');
@@ -941,8 +953,17 @@ function profile(p){
   }
   return r;
 }
-function profileRaw(p){
-  const ac=acOf(flight), cr=flight.alt, v=ac.speed, [b0,b1,b2,b3,b4]=phaseBounds(flight);
+function profileRaw(p){ return profileRawF(flight, p); }
+function profileRawF(f, p){
+  const base = baseProfile(f, p);
+  if(f.rr){   // tras cambiar de destino: transición suave de 6 min desde el estado real del avión
+    const dt = p*f.durMs/60000 - f.rr.t;
+    if(dt >= 0 && dt < 6){ const k=dt/6, e=k*k*(3-2*k); return { alt: f.rr.h + (base.alt-f.rr.h)*e, spd: f.rr.v + (base.spd-f.rr.v)*e }; }
+  }
+  return base;
+}
+function baseProfile(f, p){
+  const ac=acOf(f), cr=f.alt, v=ac.speed, [b0,b1,b2,b3,b4]=phaseBounds(f);
   const T = (a,b) => Math.max(0, Math.min(1, (p-a)/(b-a)));
   if(ac.kind==='heli'){
     if(p<b0) return { alt:0, spd:0 };                                                   // arranque de rotores
@@ -1002,6 +1023,112 @@ function tick(force){
 }
 setInterval(tick, 250);
 
+/* =================== CAMBIO DE DESTINO EN VUELO =================== */
+function flightState(){
+  const el=elapsedMs(flight), p=Math.min(1, el/flight.durMs), pr=profile(p);
+  return { el, p, tMin: el/60000, alt: pr.alt, spd: pr.spd, pb: phaseBounds(flight) };
+}
+/* busca la duración total para que lo que queda por volar (R km) cuadre con el perfil de velocidad */
+function solveDivert(f, st, R){
+  const heli = acOf(f).kind==='heli', late = heli ? [4, 1.6] : [22, 7];
+  const mk = rem => {
+    const k = Math.min(1, .8*rem/(late[0]+late[1]));
+    const pm = [f.pm[0], f.pm[1], f.pm[2], late[0]*k, late[1]*k];
+    const D = st.tMin + rem;
+    return { ac:f.ac, alt:f.alt, durMs:D*60000, pm, rr:{ t:st.tMin, h:st.alt, v:st.spd, d:0 } };
+  };
+  const distFor = rem => {
+    const fc = mk(rem), D = st.tMin + rem, N = 240; let km = 0, prev = null;
+    for(let i=0;i<=N;i++){ const t = st.tMin + rem*i/N, v = Math.max(0, profileRawF(fc, t/D).spd); if(prev!=null) km += (prev+v)/2 * (rem/N)/60; prev = v; }
+    return km;
+  };
+  let lo = .5, hi = 3000;
+  for(let it=0; it<40; it++){ const mid=(lo+hi)/2; if(distFor(mid) < R) lo=mid; else hi=mid; }
+  const rem = (lo+hi)/2, fc = mk(rem);
+  return { rem, D: st.tMin + rem, pm: fc.pm };
+}
+function planDivert(code){
+  const f=flight, ac=acOf(f), d=AP[code];
+  if(!d) return { err:'Destino no encontrado' };
+  if(code===f.to) return { err:'Ese ya es su destino actual' };
+  if(heliOnly(d) && ac.kind!=='heli') return { err:'Ese aeródromo solo admite helicópteros' };
+  const st = flightState(), r = activeRoute(), mode = f.routeMode || S.routeMode;
+  if(st.p < st.pb[1]){   // todavía en tierra: nuevo plan completo desde el origen
+    if(code===f.from) return { err:'Ya está en ese aeródromo' };
+    const nr = buildRoute(f.from, code, ac, mode);
+    if(stopsFor(nr.dist,ac) > maxStops(ac)) return { err:'Fuera de autonomía para ese destino' };
+    const D = Math.max(flightMin(nr.dist, ac), st.tMin + 3);
+    return { ground:true, route:nr, newPart:nr, D, rem: D-st.tMin, remKm: nr.dist, st };
+  }
+  const frac = rp(st.p), cur = routePointAt(r, frac);
+  const nr = buildRoute(null, code, ac, mode, cur);
+  if(nr.dist > ac.range*(1+maxStops(ac))) return { err:'Fuera de autonomía para ese destino' };
+  const flown = r.pts.slice(0, cur.seg).map(q => ({ ...q }));
+  const comb = recomputeRoute({ pts: flown.concat(nr.pts.map(q => ({ ...q }))), dep:r.dep, arr:nr.arr, vfr: r.vfr || nr.vfr });
+  const dFlown = comb.cum[flown.length], R = comb.dist - dFlown;
+  const icaoO = RUNWAYS[f.from]?.icao || f.from;
+  comb.str = `${icaoO}${r.dep?'/'+r.dep.id:''} … ${nr.str}`;
+  comb.strShort = `${icaoO}${r.dep?'/'+r.dep.id:''} … ${nr.strShort}`;
+  comb.wind = { o: r.wind?.o || null, d: nr.wind?.d || null };
+  const sol = solveDivert(f, st, R);
+  return { route:comb, newPart:nr, dFlown, remKm:R, D:sol.D, rem:sol.rem, pm:sol.pm, st, cur };
+}
+function commitDivert(code, plan){
+  const f = flight, old = f.to, d = AP[code];
+  f.divertedFrom = f.divertedFrom || old;
+  f.to = code; S.dest = code; savePref();
+  f.route = packRoute(plan.route); f.dist = plan.route.dist; f.direct = distKm(AP[f.from], d);
+  f.runwayArr = plan.route.arr?.id || ''; f.stops = 0;
+  if(plan.ground){ f.rr = null; f.durMs = plan.D*60000; f.pm = phaseMinutes(f, plan.D); }
+  else { f.rr = { t:plan.st.tMin, h:plan.st.alt, v:plan.st.spd, d:plan.dFlown }; f.pm = plan.pm; f.durMs = plan.D*60000; }
+  f.mins = Math.round(f.durMs/60000);
+  ['p4','p5','stop'].forEach(k => delete f.said[k]); f.lastWpt = null;
+  delete f._pb; delete f._rpt; delete f._route;
+  f.meteo = { ...f.meteo, live:false }; f.tzD = null;
+  saveFlight(); enterFlightMode(); fitRoute();
+  say('cap', `Comandante Supremo, cambio de destino: nos dirigimos a ${d.city}${plan.route.arr?`, pista ${plan.route.arr.id}`:''}. Quedan ${fmtN(plan.remKm)} km; nuevo tiempo estimado ${fmtHM(plan.rem)}, llegada a las ${fmtTime(Date.now()+plan.rem*60000)}.`);
+  enrichFlight(f);
+  toast(`🔀 Nuevo destino: ${d.city}`);
+}
+let dvSel = null, dvPlan = null;
+function divertPreview(code){
+  dvSel = code; const d = AP[code];
+  $('inDivert').value = d ? `${d.iata} · ${d.city}` : '';
+  dvPlan = planDivert(code);
+  const box = $('dvPrev');
+  if(dvPlan.err){ box.innerHTML = `<div class="note warn" style="margin-top:12px">⚠️ ${dvPlan.err}</div>`; $('dvGo').disabled = true; return; }
+  const r = dvPlan.newPart, arr = dvPlan.route.arr;
+  box.innerHTML = `<div class="summary" style="margin-top:14px">
+    <div class="sum-route"><div><div class="sum-iata" style="font-size:26px">${dvPlan.ground ? flight.from : 'AHORA'}</div><div class="sum-city">${dvPlan.ground ? 'en tierra' : fmtN(dvPlan.st.alt)+' ft'}</div></div>
+      <div class="sum-mid"><span>🔀</span></div>
+      <div style="text-align:right"><div class="sum-iata" style="font-size:26px">${d.iata}</div><div class="sum-city">${d.city} ${flag(d.cc)}</div></div></div>
+    <div class="stats">
+      <div class="stat"><div class="k">Quedan</div><div class="v">${fmtN(dvPlan.remKm)} km</div></div>
+      <div class="stat"><div class="k">Tiempo</div><div class="v">${fmtHM(dvPlan.rem)}</div></div>
+      <div class="stat"><div class="k">Llegada</div><div class="v">${fmtTime(Date.now()+dvPlan.rem*60000)}</div></div>
+    </div>
+    ${arr ? `<div class="note">🛬 Pista <b>${arr.id}</b> (rumbo ${Math.round(arr.hdg)}°)${r.wind?.d ? ' · '+windTxt(r.wind.d) : ''}</div>` : ''}
+    <div class="rt-str" style="margin-top:8px">${r.strShort}</div>
+  </div>`;
+  $('dvGo').disabled = false;
+  $('dvGo').textContent = `🔀 Ir a ${d.city}`;
+  if(RUNWAYS[code]?.rw?.length && !(WIND[code] && Date.now()-WIND[code].t < 20*60000) && !windPending.has(code)){
+    windPending.add(code); fetchPlace(d).then(() => { windPending.delete(code); if(dvSel===code && $('mDivert').classList.contains('open')) divertPreview(code); });
+  }
+}
+function openDivert(){
+  if(!flight || !flight.start) return;
+  dvSel = null; dvPlan = null; $('dvPrev').innerHTML = ''; $('dvGo').disabled = true; $('dvGo').textContent = '🔀 Cambiar destino'; $('inDivert').value = '';
+  const st = flightState(), r = activeRoute(), ac = acOf(flight);
+  const here = st.p < st.pb[1] ? AP[flight.from] : routePointAt(r, rp(st.p));
+  $('dvSub').innerHTML = st.p < st.pb[1] ? `Todavía en tierra en ${AP[flight.from].city}: se recalcula el vuelo completo.`
+    : `Posición actual: ${fmtN(st.alt)} ft · ${fmtN(st.spd)} km/h · a ${fmtN(flight.dist*rp(st.p))} km del despegue. La nueva ruta sale desde aquí.`;
+  const near = AIRPORTS.filter(a => a.iata!==flight.to && a.iata!==flight.from && !(heliOnly(a) && ac.kind!=='heli') && a.type!=='cp')
+    .map(a => ({ a, km: gcDist(here, a) })).sort((x,y) => x.km-y.km).slice(0,6);
+  $('dvNear').innerHTML = near.map(x => `<button class="sugg-item" data-i="${x.a.iata}"><span class="fl">${flag(x.a.cc)}</span><span class="nm">${typeIcon(x.a)} ${x.a.city}<small>${x.a.iata} · ${x.a.name}</small></span><span class="tm">${fmtN(x.km)} km</span></button>`).join('');
+  openModal('mDivert');
+}
+
 /* =================== CONFIRMACIÓN =================== */
 function confirmBox(title,text,okLbl='Aceptar'){
   return new Promise(res => {
@@ -1022,9 +1149,9 @@ function renderLog(){
   $('tierCard').innerHTML = `<div class="tier-row"><div>Club Vuelo Privado<br><b>${cur.n}</b></div><div style="text-align:right;color:var(--muted)">${next?`Faltan <b style="font-size:16px">${(next.h-t.hours).toFixed(1)} h</b><br>para ${next.n}`:'Nivel máximo alcanzado'}</div></div><div class="tier-bar"><div style="width:${pct}%"></div></div>`;
   $('lbList').innerHTML = log.length ? log.map((e,i) => `<button class="lb-item" data-i="${i}">
       <span class="rt">${e.from} → ${e.to}</span>
-      <span class="meta"><b>${AP[e.from]?.city||e.from} → ${AP[e.to]?.city||e.to}</b><br>${e.flightNo} · ${ACF[e.ac]?.short||''} · ${fmtDate(e.date)}</span>
+      <span class="meta"><b>${AP[e.from]?.city||e.from} → ${AP[e.to]?.city||e.to}</b><br>${e.flightNo} · ${ACF[e.ac]?.short||''} · ${fmtDate(e.date)}${e.f?.divertedFrom?` · ↪ desvío (iba a ${e.f.divertedFrom})`:''}</span>
       <span class="meta hide-m" style="text-align:right"><b>${fmtHM(e.studyMin)}</b><br>${fmtN(e.km)} km</span>
-      <span class="st ${e.status==='ok'?'ok':'ko'}">${e.status==='ok'?'Completado':'Desviado'}</span></button>`).join('')
+      <span class="st ${e.status==='ok'?'ok':'ko'}">${e.status==='ok'?'Completado':'Interrumpido'}</span></button>`).join('')
     : `<div class="empty">Aún no hay vuelos registrados.<br>Su primer despegue le espera, Comandante Supremo.</div>`;
   $('lbClear').style.display = log.length ? '' : 'none';
 }
@@ -1100,6 +1227,10 @@ $('bFollow').onclick = () => { follow=!follow; $('bFollow').classList.toggle('on
 $('bPass').onclick = () => flight && showPass(flight,'view');
 $('bFull').onclick = () => { try{ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }catch(e){} };
 $('bAbort').onclick = abort;
+$('bDivert').onclick = openDivert;
+$('dvNear').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(b) divertPreview(b.dataset.i); });
+$('dvGo').onclick = () => { if(!dvSel || !dvPlan || dvPlan.err) return; const code=dvSel, plan=planDivert(code); if(plan.err){ toast(plan.err); return; } closeModal('mDivert'); commitDivert(code, plan); };
+setupCombo($('inDivert'), $('lsDivert'), 'divert');
 $('bQuit').onclick = quitFlight;
 $('paHead').onclick = () => { $('pa').classList.toggle('collapsed'); $('paToggle').textContent = $('pa').classList.contains('collapsed') ? '+' : '–'; };
 $('btnLog').onclick = $('btnClub').onclick = () => { renderLog(); openModal('mLog'); };
