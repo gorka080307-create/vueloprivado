@@ -17,6 +17,10 @@ Temporizador de estudio con simulador de vuelo en jet privado. Sin registros, si
 - **Pausa (circuito de espera)**, **desvío** del vuelo y recuperación automática del vuelo si recargas la página.
 - **Bitácora y Club Vuelo Privado**: horas, km y destinos acumulados, con niveles Silver → Gold → Platinum → Black → Infinite.
 
+## Aeródromos de todo el mundo
+
+Más de **14.600 aeródromos**: todos los aeropuertos grandes y medianos del mundo, los pequeños con código IATA, los aeródromos con código OACI y pista de 800 m o más, unas 1.000 bases aéreas militares y helipuertos, además de la selección propia (helipuertos de Moncloa y Zarzuela, bases FAMET, despliegues en el exterior…). El mapa los va mostrando según el zoom. Cada aeronave necesita una pista mínima (por ejemplo, un A330 no aterriza en Courchevel).
+
 ## Rutas aéreas reales
 
 - **Pistas reales** de cada aeropuerto (orientación, longitud y extremos) y **radioayudas VOR reales** de todo el mundo, de [OurAirports](https://ourairports.com/data/) (dominio público).

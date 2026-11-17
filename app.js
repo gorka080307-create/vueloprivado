@@ -4,7 +4,11 @@
 'use strict';
 const PAX = { name:'GORKA CORBACHO MARTÍNEZ', alias:'COMANDANTE SUPREMO' };
 
-const AIRPORTS = AIRPORTS_RAW.map(a => ({ iata:a[0], city:a[1], name:a[2], cc:a[3], lat:a[4], lon:a[5], type:a[6]||'ap', note:a[7]||'' }));
+const AIRPORTS = AIRPORTS_RAW.map(a => ({ iata:a[0], city:a[1], name:a[2], cc:a[3], lat:a[4], lon:a[5], type:a[6]||'ap', note:a[7]||'', sz:'C' }))
+  .concat((typeof AIRPORTS_WORLD!=='undefined' ? AIRPORTS_WORLD : []).map(w => ({ iata:w[0], city:w[1], name:w[2], cc:w[3], lat:w[4], lon:w[5], type:w[6], sz:w[7], icao:w[8], note:'', world:true })));
+/* nombres de países en español para todos los códigos (Intl) */
+(() => { let dn=null; try{ dn = new Intl.DisplayNames(['es'], { type:'region' }); }catch(e){}
+  AIRPORTS.forEach(a => { if(!COUNTRIES[a.cc]){ let n=null; try{ n = dn && dn.of(a.cc); }catch(e){} COUNTRIES[a.cc] = n || a.cc; } }); })();
 const AP = Object.fromEntries(AIRPORTS.map(a => [a.iata, a]));
 const ACF = Object.fromEntries(AIRCRAFT.map(a => [a.id, a]));
 const heliOnly = a => a.type==='hp' || a.type==='milh' || a.type==='cp';
@@ -67,8 +71,15 @@ const typeIcon = a => AP_TYPES[a.type].icon;
 /* =================== CÁLCULO DE VUELO =================== */
 const maxStops = ac => ac.kind==='heli' ? 4 : 1;
 const stopsFor = (dist,ac) => Math.max(0, Math.ceil(dist/ac.range)-1);
+function rwMin(ac){
+  if(ac.kind==='heli') return 0;
+  return ({ phenom:950, latitude:1100, challenger:1450, falcon:1700, g700:1800, global:1800, f900:1500, a310:2300, a330:2500, mrtt:2500, a400:1000 })[ac.id] || 1500;
+}
+function longestRw(code){ const R = typeof RUNWAYS!=='undefined' && RUNWAYS[code]; return R && R.rw && R.rw.length ? R.rw[0][4] : null; }
+function rwOk(ac, a){ if(!a || !a.iata || ac.kind==='heli') return true; const L = longestRw(a.iata); return L==null ? true : L >= rwMin(ac); }
 function feasible(ac,o,d){
   if((heliOnly(o)||heliOnly(d)) && ac.kind!=='heli') return false;
+  if(!rwOk(ac,o) || !rwOk(ac,d)) return false;
   return stopsFor(distKm(o,d),ac) <= maxStops(ac);
 }
 function flightMin(dist,ac){
@@ -202,17 +213,36 @@ function initMap(){
   historyLayer = L.layerGroup().addTo(map);
   airportLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
+  apRenderer = L.canvas({ padding:.4 });
+  apGroups = { big:L.layerGroup(), mid:L.layerGroup(), small:L.layerGroup() };
+  airportLayer.addLayer(apGroups.big);
   AIRPORTS.forEach(addApMarker);
+  map.on('zoomend', updateApLayers); updateApLayers();
   map.on('click', onMapClick);
   map.on('dragstart', () => { if(follow){ follow=false; $('bFollow').classList.remove('on'); } });
   drawNight(); setInterval(drawNight, 5*60000);
 }
 const apMarkers = {};
+let apRenderer = null, apGroups = null;
+function apGroupOf(a){ return a.sz==='C' || a.custom || a.sz==='L' ? 'big' : (a.sz==='M' || a.type==='mil' || a.type==='hp') ? 'mid' : 'small'; }
+function updateApLayers(){
+  if(!map || !apGroups) return;
+  const z = map.getZoom();
+  [['mid', z>=5], ['small', z>=7]].forEach(([g,on]) => { const has = airportLayer.hasLayer(apGroups[g]); if(on && !has) airportLayer.addLayer(apGroups[g]); if(!on && has) airportLayer.removeLayer(apGroups[g]); });
+}
+function removeApMarker(code){ const m = apMarkers[code]; if(m){ apGroups[m._vpg].removeLayer(m); delete apMarkers[code]; } }
+function apPopupHTML(a){
+  const t = AP_TYPES[a.type], L1 = longestRw(a.iata), R = (typeof RUNWAYS!=='undefined') && RUNWAYS[a.iata];
+  const rwTxt = R && R.rw.length ? `<br>🛬 ${R.rw.length} pista${R.rw.length>1?'s':''}: ${R.rw.slice(0,3).map(r => r[0]+'/'+r[1]).join(', ')}${R.rw.length>3?'…':''} · máx. ${fmtN(L1)} m` : '';
+  return `<div style="font-weight:700">${flag(a.cc)} ${t.icon} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}${a.icao && a.icao!==a.iata?` (${a.icao})`:''}${a.note?'<br>'+a.note:''}<br><i>${t.label}${heliOnly(a)?' · solo helicópteros':''} · ${COUNTRIES[a.cc]||a.cc}</i>${rwTxt}</div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>${a.custom?`<div class="pop-btns"><button onclick="removeCustom('${a.iata}')" style="color:var(--red)">Borrar este punto</button></div>`:''}`;
+}
 function addApMarker(a){
-  const t = AP_TYPES[a.type];
-  const m = L.circleMarker([a.lat,a.lon], { radius:t.r, color:t.color, weight:a.custom?2:1, fillColor:t.color, fillOpacity:.6, opacity:.8, bubblingMouseEvents:false });
-  m.bindPopup(`<div style="font-weight:700">${flag(a.cc)} ${t.icon} <span style="font-family:var(--mono);color:var(--gold2)">${a.iata}</span> · ${a.city}</div><div style="color:var(--muted);font-size:11.5px">${a.name}${a.note?'<br>'+a.note:''}<br><i>${t.label}${heliOnly(a)?' · solo helicópteros':''}</i></div><div class="pop-btns"><button onclick="pickAirport('origin','${a.iata}')">Salir de aquí</button><button onclick="pickAirport('dest','${a.iata}')">Volar aquí</button></div>${a.custom?`<div class="pop-btns"><button onclick="removeCustom('${a.iata}')" style="color:var(--red)">Borrar este punto</button></div>`:''}`);
-  airportLayer.addLayer(m); apMarkers[a.iata]=m;
+  const t = AP_TYPES[a.type], g = apGroupOf(a);
+  const r = a.sz==='S' ? t.r*.7 : a.sz==='M' ? t.r*.85 : t.r;
+  const m = L.circleMarker([a.lat,a.lon], { renderer:apRenderer, radius:r, color:t.color, weight:a.custom?2:1, fillColor:t.color, fillOpacity:a.world?.5:.65, opacity:a.world?.65:.85, bubblingMouseEvents:false });
+  m.on('click', () => L.popup().setLatLng([a.lat,a.lon]).setContent(apPopupHTML(a)).openOn(map));
+  m._vpg = g; apGroups[g].addLayer(m); apMarkers[a.iata]=m;
+  return m;
 }
 /* --- clic libre en el mapa --- */
 function onMapClick(e){
@@ -255,10 +285,10 @@ window.pickFree = async function(key, lat, lon){
   customPts = customPts.filter(p => p.code!==code);
   customPts.push(c);
   const used = new Set(log.flatMap(e => [e.from,e.to]).concat([S.origin,S.dest]));
-  while(customPts.length > 40){ const i = customPts.findIndex(p => !used.has(p.code)); if(i<0) break; const old=customPts.splice(i,1)[0]; if(apMarkers[old.code]) airportLayer.removeLayer(apMarkers[old.code]); }
+  while(customPts.length > 40){ const i = customPts.findIndex(p => !used.has(p.code)); if(i<0) break; const old=customPts.splice(i,1)[0]; removeApMarker(old.code); }
   LS.set('vp_custom', customPts);
   const a = indexCustom(c);
-  if(map){ if(apMarkers[code]) airportLayer.removeLayer(apMarkers[code]); addApMarker(a); }
+  if(map){ removeApMarker(code); addApMarker(a); }
   pickAirport(key, code);
   toast(`📍 ${key==='origin'?'Despegue':'Aterrizaje'} en ${a.city}${COUNTRIES[a.cc]?', '+COUNTRIES[a.cc]:''}`);
 };
@@ -266,7 +296,7 @@ window.removeCustom = function(code){
   if(map) map.closePopup();
   if(S.origin===code || S.dest===code){ toast('Ese punto está en su plan de vuelo actual'); return; }
   customPts = customPts.filter(p => p.code!==code); LS.set('vp_custom', customPts);
-  if(apMarkers[code]) airportLayer.removeLayer(apMarkers[code]);
+  removeApMarker(code);
   if(!log.some(e => e.from===code || e.to===code)){ const i=AIRPORTS.findIndex(x=>x.iata===code); if(i>=0) AIRPORTS.splice(i,1); delete AP[code]; }
   toast('Punto borrado');
 };
@@ -418,11 +448,22 @@ function updatePlane(p){
 }
 
 /* =================== PLANIFICADOR =================== */
+const SZ_RANK = { C:0, L:1, M:2, S:3 };
+function searchAirports(q, n){
+  const out = [];
+  for(const a of AIRPORTS){
+    if(!a._q) a._q = norm(`${a.iata} ${a.icao||''} ${a.city} ${a.name} ${COUNTRIES[a.cc]||''} ${AP_TYPES[a.type].label} ${a.note}`);
+    const i = a._q.indexOf(q); if(i < 0) continue;
+    const exact = a.iata.toLowerCase()===q || (a.icao||'').toLowerCase()===q;
+    out.push({ a, s: (exact ? -10 : 0) + (i===0 ? -2 : 0) + (a.custom ? -1 : SZ_RANK[a.sz] ?? 2) });
+  }
+  return out.sort((x,y) => x.s-y.s).slice(0,n).map(x => x.a);
+}
 function setupCombo(inp, list, key){
   let active=-1, items=[];
   const render = () => {
     const q = norm(inp.value.trim());
-    items = AIRPORTS.filter(a => !q || norm(`${a.iata} ${a.city} ${a.name} ${COUNTRIES[a.cc]||''} ${AP_TYPES[a.type].label} ${a.note}`).includes(q)).slice(0,60);
+    items = !q ? AIRPORTS.filter(a => a.sz==='C' || a.custom).slice(0,60) : searchAirports(q, 60);
     list.innerHTML = items.map((a,i) => `<div class="opt${i===active?' active':''}" data-i="${a.iata}">${flag(a.cc)} <b>${a.iata}</b> <span>${typeIcon(a)} ${a.city}</span> <small>${a.name}</small></div>`).join('') || '<div class="opt" style="color:var(--muted)">Sin resultados</div>';
     list.hidden = false;
   };
@@ -457,7 +498,7 @@ function ensureAircraft(){
   const o=AP[S.origin], d=AP[S.dest];
   if(!feasible(ACF[S.ac],o,d)){
     const b=bestAircraft(o,d,S.ac);
-    if(b){ S.ac=b.id; toast(`${heliOnly(o)||heliOnly(d)?'Solo se puede llegar en helicóptero.':'Autonomía insuficiente.'} Asignamos un ${b.short}`); }
+    if(b){ S.ac=b.id; toast(`${heliOnly(o)||heliOnly(d)?'Solo se puede llegar en helicóptero.':!rwOk(ACF[S.ac],o)||!rwOk(ACF[S.ac],d)?'Pista demasiado corta para esa aeronave.':'Autonomía insuficiente.'} Asignamos un ${b.short}`); }
   }
 }
 function renderAircraftSelect(){
@@ -465,7 +506,7 @@ function renderAircraftSelect(){
   const groups=[...new Set(AIRCRAFT.map(a=>a.group))];
   $('selAc').innerHTML = groups.map(g => `<optgroup label="${g}">` + AIRCRAFT.filter(a=>a.group===g).map(a => {
     const ok = d ? feasible(a,o,d) : !(heliOnly(o) && a.kind!=='heli');
-    const why = !ok ? ((heliOnly(o)||(d&&heliOnly(d))) && a.kind!=='heli' ? ' (no aterriza en helipuerto)' : ' (sin autonomía)') : '';
+    const why = !ok ? ((heliOnly(o)||(d&&heliOnly(d))) && a.kind!=='heli' ? ' (no aterriza en helipuerto)' : (!rwOk(a,o) || (d && !rwOk(a,d))) ? ' (pista corta)' : ' (sin autonomía)') : '';
     return `<option value="${a.id}" ${a.id===S.ac?'selected':''} ${ok?'':'disabled'}>${a.kind==='heli'?'🚁':'✈️'} ${a.name} · ${fmtN(a.range)} km${why}</option>`;
   }).join('') + '</optgroup>').join('');
 }
@@ -518,7 +559,7 @@ function renderChips(){
 function renderSuggestions(){
   const o=AP[S.origin]; $('suggFrom').textContent = `${o.city} (${o.iata})`;
   const cur=ACF[S.ac];
-  const list = AIRPORTS.filter(a => a.iata!==o.iata).map(a => {
+  const list = AIRPORTS.filter(a => a.iata!==o.iata && (a.sz!=='S' || a.custom)).map(a => {
     const ac = feasible(cur,o,a) ? cur : null;
     if(!ac) return null;
     const dist=distKm(o,a)*(S.routeMode==='real' && ac.kind!=='heli' ? 1.06 : 1); return { a, dist, mins:flightMin(dist,ac) };
@@ -1052,6 +1093,7 @@ function planDivert(code){
   if(!d) return { err:'Destino no encontrado' };
   if(code===f.to) return { err:'Ese ya es su destino actual' };
   if(heliOnly(d) && ac.kind!=='heli') return { err:'Ese aeródromo solo admite helicópteros' };
+  if(!rwOk(ac, d)) return { err:`Pista demasiado corta para el ${ac.short} (máx. ${fmtN(longestRw(code))} m)` };
   const st = flightState(), r = activeRoute(), mode = f.routeMode || S.routeMode;
   if(st.p < st.pb[1]){   // todavía en tierra: nuevo plan completo desde el origen
     if(code===f.from) return { err:'Ya está en ese aeródromo' };
@@ -1123,7 +1165,7 @@ function openDivert(){
   const here = st.p < st.pb[1] ? AP[flight.from] : routePointAt(r, rp(st.p));
   $('dvSub').innerHTML = st.p < st.pb[1] ? `Todavía en tierra en ${AP[flight.from].city}: se recalcula el vuelo completo.`
     : `Posición actual: ${fmtN(st.alt)} ft · ${fmtN(st.spd)} km/h · a ${fmtN(flight.dist*rp(st.p))} km del despegue. La nueva ruta sale desde aquí.`;
-  const near = AIRPORTS.filter(a => a.iata!==flight.to && a.iata!==flight.from && !(heliOnly(a) && ac.kind!=='heli') && a.type!=='cp')
+  const near = AIRPORTS.filter(a => a.iata!==flight.to && a.iata!==flight.from && !(heliOnly(a) && ac.kind!=='heli') && a.type!=='cp' && rwOk(ac, a))
     .map(a => ({ a, km: gcDist(here, a) })).sort((x,y) => x.km-y.km).slice(0,6);
   $('dvNear').innerHTML = near.map(x => `<button class="sugg-item" data-i="${x.a.iata}"><span class="fl">${flag(x.a.cc)}</span><span class="nm">${typeIcon(x.a)} ${x.a.city}<small>${x.a.iata} · ${x.a.name}</small></span><span class="tm">${fmtN(x.km)} km</span></button>`).join('');
   openModal('mDivert');
@@ -1207,7 +1249,7 @@ $('selAc').onchange = e => { S.ac=e.target.value; savePref(); renderPlan(); draw
 $('btnBook').onclick = book;
 $('btnRandom').onclick = () => {
   const o=AP[S.origin], cur=ACF[S.ac];
-  const all = AIRPORTS.filter(a => a.iata!==o.iata && feasible(cur,o,a)).map(a => ({ a, m:flightMin(distKm(o,a),cur) }));
+  const all = AIRPORTS.filter(a => a.iata!==o.iata && (a.sz==='C' || a.sz==='L' || a.sz==='M') && feasible(cur,o,a)).map(a => ({ a, m:flightMin(distKm(o,a),cur) }));
   const near = all.filter(x => Math.abs(x.m-S.study) <= Math.max(15, S.study*.35));
   const pool = near.length ? near : all;
   if(!pool.length){ toast('No hay destinos alcanzables con esta aeronave'); return; }

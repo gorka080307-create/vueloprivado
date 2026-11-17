@@ -58,7 +58,8 @@ function runwayEnds(code){
   const R = typeof RUNWAYS!=='undefined' ? RUNWAYS[code] : null, a = AP[code];
   if(!R || !R.rw || !R.rw.length || !a) return [];
   const ends=[];
-  R.rw.forEach(rw => {
+  R.rw.forEach(x => {
+    const rw = Array.isArray(x) ? { id:[x[0],x[1]], h:[x[2],x[3]], len:x[4], e: x.length>=9 ? [[x[5],x[6]],[x[7],x[8]]] : null } : x;
     [0,1].forEach(i => {
       const hdg = rw.h[i];
       let thr, far;
