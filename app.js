@@ -111,10 +111,20 @@ let flight = LS.get('vp_active', null);
 let log = LS.get('vp_log', []);
 let follow = false;
 const savePref = () => LS.set('vp_pref', S);
-const saveFlight = () => flight ? LS.set('vp_active', flight) : LS.del('vp_active');
+const saveFlight = () => flight ? LS.set('vp_active', Object.fromEntries(Object.entries(flight).filter(([k]) => k[0] !== '_'))) : LS.del('vp_active');
 const saveLog = () => LS.set('vp_log', log);
 const acOf = f => ACF[f.ac] || AIRCRAFT[0];
-const phasesOf = f => acOf(f).kind==='heli' ? PHASES_HELI : PHASES_JET;
+/* límites de fase en tiempo absoluto realista (se comprimen solo en vuelos cortos) */
+function phaseBounds(f){
+  if(f._pb) return f._pb;
+  const D = f.durMs/60000, heli = acOf(f).kind==='heli';
+  let m = heli ? [2, .6, 3, 4, 1.6] : [5, 2, 18, 22, 7];      // rodaje/arranque, despegue, ascenso, descenso, aproximación (min)
+  const sum = m.reduce((a,b)=>a+b,0), k = Math.min(1, (heli?.65:.75)*D/sum);
+  m = m.map(x => x*k/D);
+  const b0=m[0], b1=b0+m[1], b2=b1+m[2], b4=1-m[4], b3=b4-m[3];
+  return (f._pb = [b0, b1, b2, b3, b4, 1.01]);
+}
+const phasesOf = f => { const b=phaseBounds(f); return (acOf(f).kind==='heli' ? PHASES_HELI : PHASES_JET).map((x,i) => ({ ...x, to:b[i] })); };
 
 /* =================== METEO Y HORA LOCAL (Open-Meteo, sin clave) =================== */
 function wmo(code, isDay){
@@ -290,16 +300,40 @@ function drawHistory(){
 }
 function routeLatLngs(o,d){ let dl=d.lon; const diff=dl-o.lon; if(diff>180) dl-=360; else if(diff<-180) dl+=360; return [L.latLng(o.lat,o.lon), L.latLng(d.lat,dl)]; }
 let routeLL=[], curSeg=-1;
+/* avance real a lo largo de la ruta según la velocidad de cada fase (no lineal con el tiempo) */
+const RP_N = 600;
+function progressTable(){
+  if(flight._rpt) return flight._rpt;
+  const pT = phaseBounds(flight)[0];      // rodaje / arranque de rotores: aún no se recorre la ruta
+  const cum=[0]; let prev=Math.max(0, profileRaw(pT).spd);
+  for(let k=1;k<=RP_N;k++){ const v=Math.max(0, profileRaw(pT+(1-pT)*k/RP_N).spd); cum.push(cum[k-1] + (prev+v)/2); prev=v; }
+  return (flight._rpt = { pT, cum, tot: cum[RP_N] || 1 });
+}
+function rp(p){
+  if(!flight || !flight.start) return 0;
+  const t = progressTable(); if(p <= t.pT) return 0; if(p >= 1) return 1;
+  const x=(p-t.pT)/(1-t.pT)*RP_N, i=Math.floor(x), f=x-i;
+  return Math.min(1, (t.cum[i] + ((t.cum[i+1]??t.cum[i]) - t.cum[i])*f) / t.tot);
+}
+function taxiInfo(p){   // fase de rodaje: de la plataforma al umbral de la pista
+  if(!flight || !flight.start || routeLL.length < 2) return null;
+  const t = progressTable(); if(p >= t.pT) return null;
+  const o = AP[flight.from], apron = L.latLng(o.lat, o.lon + 360*Math.round((routeLL[0].lng - o.lon)/360));
+  const r = activeRoute(); if(!r || !r.dep) return { pos: routeLL[0], a: routeLL[0], b: routeLL[1] };
+  const f = Math.min(1, p / t.pT), pa=map.project(apron,0), pb=map.project(routeLL[0],0);
+  return { pos: map.unproject(pa.add(pb.subtract(pa).multiplyBy(f)),0), a: apron, b: routeLL[0] };
+}
 function posAt(p){
   const r=activeRoute(); if(!r || routeLL.length<2) return routeA;
-  const { i, f } = routeSegAt(r, p);
+  const tx = taxiInfo(p); if(tx) return tx.pos;
+  const { i, f } = routeSegAt(r, rp(p));
   const pa=map.project(routeLL[i-1],0), pb=map.project(routeLL[i],0);
   return map.unproject(pa.add(pb.subtract(pa).multiplyBy(f)),0);
 }
 function apIcon(a,tag){ return L.divIcon({ className:'ap-label', iconSize:[0,0], html:`<div class="ap-pin ${isMilAp(a)?'mil':heliOnly(a)?'hp':''}"></div><div class="ap-tag"><small>${tag}</small><b>${a.iata}</b> · ${a.city}</div>` }); }
-function vehicleHTML(kind, seg){
+function vehicleHTML(kind, seg, A, B){
   seg = Math.max(1, Math.min(routeLL.length-1, seg||1));
-  const pa=map.project(routeLL[seg-1],0), pb=map.project(routeLL[seg],0);
+  const pa=map.project(A||routeLL[seg-1],0), pb=map.project(B||routeLL[seg],0);
   const ang=Math.atan2(pb.y-pa.y,pb.x-pa.x)*180/Math.PI;
   if(kind==='heli'){ // 🚁 mira a la izquierda: se voltea si va hacia el este
     const east = pb.x >= pa.x;
@@ -348,7 +382,8 @@ function drawRoute(fit=true){
   routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')}));
   routeLayer.addLayer(L.marker([d.lat, d.lon + 360*Math.round((routeB.lng - d.lon)/360)],{icon:apIcon(d,'Destino')}));
   const kind = (flight && flight.start ? acOf(flight) : ACF[S.ac]).kind;
-  planeMarker = L.marker(routeA, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:vehicleHTML(kind,1) }) });
+  const startLL = (r && r.dep) ? L.latLng(o.lat, o.lon + 360*Math.round((routeA.lng - o.lon)/360)) : routeA;
+  planeMarker = L.marker(startLL, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:vehicleHTML(kind,1) }) });
   routeLayer.addLayer(planeMarker);
   if(fit) fitRoute();
 }
@@ -363,10 +398,10 @@ function fitRoute(){
 }
 function updatePlane(p){
   if(!map || !planeMarker) return;
-  const pos = posAt(p), r = activeRoute();
-  const seg = r ? routeSegAt(r, p).i : 1;
-  if(seg !== curSeg){ curSeg = seg; const el = planeMarker.getElement(); if(el) el.innerHTML = vehicleHTML((flight && flight.start ? acOf(flight) : ACF[S.ac]).kind, seg); }
-  const flown = routeLL.slice(0, seg).concat([pos]);
+  const pos = posAt(p), r = activeRoute(), tx = taxiInfo(p);
+  const seg = tx ? 0 : r ? routeSegAt(r, rp(p)).i : 1;
+  if(seg !== curSeg){ curSeg = seg; const el = planeMarker.getElement(); const kind=(flight && flight.start ? acOf(flight) : ACF[S.ac]).kind; if(el) el.innerHTML = tx ? vehicleHTML(kind, 1, tx.a, tx.b) : vehicleHTML(kind, seg); }
+  const flown = tx ? [pos] : routeLL.slice(0, seg).concat([pos]);
   planeMarker.setLatLng(pos); flownLine.setLatLngs(flown); flownGlow.setLatLngs(flown);
   if(follow && mapReady()) map.panTo(pos, { animate:true, duration:.8 });
 }
@@ -757,10 +792,10 @@ function announcements(p, el){
   // paso por radioayudas
   const rt = activeRoute();
   if(rt && !rt.vfr && pi>=2 && pi<=4 && !f.dnd){
-    const seg = routeSegAt(rt, p).i, prev = rt.pts[seg-1];
+    const seg = routeSegAt(rt, rp(p)).i, prev = rt.pts[seg-1];
     if(prev && (prev.kind==='vor' || prev.kind==='gc') && f.lastWpt !== seg-1 && el - (f.lastWptMsg||0) > 180000){
       f.lastWpt = seg-1; f.lastWptMsg = el;
-      const nx = nextWaypoint(rt, p);
+      const nx = nextWaypoint(rt, rp(p));
       const what = prev.kind==='vor' ? `el ${prev.label.split(' ')[0]} de ${prev.label.split(' ').slice(1).join(' ')} (${prev.name})` : `el punto ${prev.name}`;
       say('fo', `Sobrevolando ${what}.${nx && nx.pt.name ? ` Próximo punto: ${nx.pt.kind==='faf'||nx.pt.kind==='star'?'inicio de la aproximación':nx.pt.name}, a ${fmtN(nx.km)} km.` : ''}`, false);
     }
@@ -898,31 +933,34 @@ async function quitFlight(){
 function profile(p){
   const r = profileRaw(p);
   if(p > .5 && flight){ // senda de planeo: 3° en jets, ~8° en helicópteros
-    const remM = flight.dist*1000*(1-p), ac = acOf(flight);
+    const remM = flight.dist*1000*(1-rp(p)), ac = acOf(flight);
     const heli = ac.kind==='heli', cap = remM * (heli ? 0.14 : 0.0524) / 0.3048;
-    const pApp = heli ? .90 : .95;
+    const pb = phaseBounds(flight), pApp = heli ? pb[3] : pb[4];
     if(p >= pApp) r.alt = Math.max(0, Math.min(cap, profileRaw(pApp).alt));   // en final, sobre la senda
     else if(r.alt > cap) r.alt = Math.max(0, cap);
   }
   return r;
 }
 function profileRaw(p){
-  const ac=acOf(flight), cr=flight.alt, v=ac.speed;
+  const ac=acOf(flight), cr=flight.alt, v=ac.speed, [b0,b1,b2,b3,b4]=phaseBounds(flight);
+  const T = (a,b) => Math.max(0, Math.min(1, (p-a)/(b-a)));
   if(ac.kind==='heli'){
-    if(p<.02) return { alt:0, spd:0 };
-    if(p<.04){ const t=(p-.02)/.02; return { alt:t*300, spd:t*60 }; }
-    if(p<.10){ const t=(p-.04)/.06; return { alt:300+t*(cr-300), spd:60+t*(v-60) }; }
-    if(p<.90) return { alt:cr + Math.sin(Date.now()/7000)*40, spd:v + Math.sin(Date.now()/9000)*4 };
-    if(p<.97){ const t=(p-.90)/.07; return { alt:cr-t*(cr-400), spd:v-t*(v-120) }; }
-    if(p<1){ const t=(p-.97)/.03; return { alt:400*(1-t), spd:120*(1-t) }; }
+    if(p<b0) return { alt:0, spd:0 };                                                   // arranque de rotores
+    if(p<b1){ const t=T(b0,b1); return { alt:t*300, spd:t*60 }; }                      // despegue vertical
+    if(p<b2){ const t=T(b1,b2); return { alt:300+t*(cr-300), spd:60+t*(v-60) }; }       // ascenso
+    if(p<b3) return { alt:cr + Math.sin(Date.now()/7000)*40, spd:v + Math.sin(Date.now()/9000)*4 };
+    if(p<b4){ const t=T(b3,b4); return { alt:cr-t*(cr-400), spd:v-t*(v-120) }; }       // descenso
+    if(p<1){ const t=T(b4,1); return { alt:400*(1-t), spd:120*(1-t) }; }                // toma
     return { alt:0, spd:0 };
   }
-  if(p<.03) return { alt:0, spd:20+p/.03*20 };
-  if(p<.08){ const t=(p-.03)/.05; return { alt:t*3000, spd:160+t*190 }; }
-  if(p<.20){ const t=(p-.08)/.12; return { alt:3000+t*(cr-3000), spd:350+t*(v-350) }; }
-  if(p<.82) return { alt:cr, spd:v + Math.sin(Date.now()/9000)*6 };
-  if(p<.95){ const t=(p-.82)/.13; return { alt:cr-t*(cr-5000), spd:v-t*(v-420) }; }
-  if(p<1){ const t=(p-.95)/.05; return { alt:5000*(1-t), spd:420-t*190 }; }
+  if(p<b0) return { alt:0, spd:25 };                                                     // rodaje
+  if(p<b1){ const t=T(b0,b1);                                                            // carrera de despegue + ascenso inicial
+    if(t<.35) return { alt:0, spd:40 + t/.35*250 };
+    const u=(t-.35)/.65; return { alt:u*3000, spd:290+u*110 }; }
+  if(p<b2){ const t=T(b1,b2); return { alt:3000+t*(cr-3000), spd:400+t*(v-400) }; }       // ascenso
+  if(p<b3) return { alt:cr, spd:v + Math.sin(Date.now()/9000)*6 };                       // crucero
+  if(p<b4){ const t=T(b3,b4); return { alt:cr-t*(cr-3000), spd:v-t*(v-330) }; }          // descenso
+  if(p<1){ const t=T(b4,1); return { alt:3000*(1-t), spd:330-t*80 }; }                   // aproximación
   return { alt:0, spd:0 };
 }
 let lastMapUpd=0;
@@ -942,10 +980,11 @@ function tick(force){
   $('hTimerLbl').textContent = onBreak ? '☕ Descanso · vuelve en' : paused ? 'En espera · pausado' : 'Tiempo restante';
   $('hud').classList.toggle('on-break', onBreak);
   $('hEl').textContent = fmtClock(el);
-  $('hAlt').textContent = paused && p>.1 && p<.9 ? 'Holding' : fmtN(pr.alt)+' ft';
+  const pbH = phaseBounds(flight);
+  $('hAlt').textContent = paused && p>pbH[1] && p<pbH[4] ? 'Holding' : fmtN(pr.alt)+' ft';
   $('hSpd').textContent = fmtN(pr.spd)+' km/h';
-  $('hKm').textContent = fmtN(flight.dist*(1-p))+' km';
-  const rtH = activeRoute(), nx = rtH && !rtH.vfr ? nextWaypoint(rtH, p) : null;
+  $('hKm').textContent = fmtN(flight.dist*(1-rp(p)))+' km';
+  const rtH = activeRoute(), nx = rtH && !rtH.vfr ? nextWaypoint(rtH, rp(p)) : null;
   $('hPct').textContent = nx ? `${nx.pt.kind==='rwy' ? 'RWY '+nx.pt.name.split(' ').pop() : nx.pt.kind==='faf' ? 'FAF' : nx.pt.kind==='star' ? 'IAF' : nx.pt.kind==='sid' ? 'SID' : nx.pt.name} · ${fmtN(nx.km)} km` : (p*100).toFixed(1)+'%';
   const eta = Date.now()+rem;
   $('hEta').textContent = fmtTimeTZ(eta, flight.tzD) + (flight.tzD!=null?'*':'');
