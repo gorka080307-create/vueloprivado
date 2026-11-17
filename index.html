@@ -292,6 +292,16 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
 .bp-plan .pl{flex:1;min-width:0}
 .bp-plan .pl b{font-size:10.5px;line-height:1.5;word-break:break-word;font-weight:500}
 @media (max-width:820px){ .bp-plan{flex-wrap:wrap} .bp-plan .pl{flex-basis:100%} }
+
+/* selector de mapa base */
+.base-switch{display:flex;gap:2px;padding:3px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);margin-bottom:8px!important}
+.base-switch button{padding:7px 11px;border-radius:9px;font-size:12px;font-weight:700;color:var(--muted)}
+.base-switch button.on{background:rgba(212,175,106,.18);color:var(--gold2)}
+.base-switch button:hover{color:var(--text)}
+body.base-sat .vignette{background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,.4) 100%)}
+body.base-sat .wp span, body.base-sat .ap-tag{box-shadow:0 2px 8px rgba(0,0,0,.6)}
+body.flying .base-switch{margin-bottom:6px!important}
+@media (max-width:820px){ .base-switch span{display:none} }
 @media (max-width:420px){ #tierName{display:none} }
 @media (max-width:820px){
   .topbar{padding:10px 14px}

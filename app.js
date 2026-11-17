@@ -206,8 +206,23 @@ const hasLeaflet = typeof L !== 'undefined';
 function initMap(){
   if(!hasLeaflet){ $('map').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#777">Mapa no disponible sin conexión</div>'; return; }
   map = L.map('map', { zoomControl:false, worldCopyJump:true, minZoom:2, attributionControl:true }).setView([40,-3], 4);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution:'Tiles &copy; Esri', maxZoom:13 }).addTo(map);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom:13, opacity:.75 }).addTo(map);
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+  BASES = {
+    map: [ L.tileLayer(ESRI+'Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution:'Tiles &copy; Esri', maxZoom:16, maxNativeZoom:16 }),
+           L.tileLayer(ESRI+'Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom:16, maxNativeZoom:16, opacity:.75 }) ],
+    sat: [ L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution:'Imágenes &copy; Esri, Maxar, Earthstar Geographics', maxZoom:18, maxNativeZoom:18 }),
+           L.tileLayer(ESRI+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom:18, maxNativeZoom:18, opacity:.9 }) ],
+  };
+  setBaseMap(LS.get('vp_base','map'));
+  const Switch = L.Control.extend({ options:{ position:'bottomright' }, onAdd(){
+    const d = L.DomUtil.create('div', 'base-switch');
+    d.innerHTML = '<button data-b="map" title="Mapa oscuro">🗺️<span> Mapa</span></button><button data-b="sat" title="Vista satélite">🛰️<span> Satélite</span></button>';
+    L.DomEvent.disableClickPropagation(d);
+    d.addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if(b) setBaseMap(b.dataset.b); });
+    return d;
+  }});
+  map.addControl(new Switch());
+  syncBaseSwitch();
   L.control.zoom({ position:'bottomright' }).addTo(map);
   nightLayer = L.layerGroup().addTo(map);
   historyLayer = L.layerGroup().addTo(map);
@@ -301,6 +316,20 @@ window.removeCustom = function(code){
   toast('Punto borrado');
 };
 
+/* --- mapa base: oscuro o satélite --- */
+let BASES = null, baseMode = 'map';
+function setBaseMap(m){
+  if(!map || !BASES || !BASES[m]) return;
+  Object.values(BASES).flat().forEach(l => { if(map.hasLayer(l)) map.removeLayer(l); });
+  BASES[m].forEach((l,i) => { l.addTo(map); if(i===0) l.bringToBack(); });
+  baseMode = m; LS.set('vp_base', m);
+  map.setMaxZoom(m==='sat' ? 18 : 16);
+  document.body.classList.toggle('base-sat', m==='sat');
+  if(nightLayer) nightLayer.eachLayer(p => p.setStyle({ fillOpacity: m==='sat' ? .45 : .38 }));
+  syncBaseSwitch();
+}
+function syncBaseSwitch(){ document.querySelectorAll('.base-switch button').forEach(b => b.classList.toggle('on', b.dataset.b===baseMode)); }
+
 /* --- terminador día/noche --- */
 function solarPos(date){
   const rad=Math.PI/180, jd=date/86400000+2440587.5, n=jd-2451545.0;
@@ -322,7 +351,7 @@ function nightRing(date, shift){
 function drawNight(){
   if(!map) return; nightLayer.clearLayers();
   const now=Date.now();
-  [-360,0,360].forEach(sh => nightLayer.addLayer(L.polygon(nightRing(now,sh), { stroke:false, fillColor:'#000814', fillOpacity:.38, interactive:false })));
+  [-360,0,360].forEach(sh => nightLayer.addLayer(L.polygon(nightRing(now,sh), { stroke:false, fillColor:'#000814', fillOpacity: baseMode==='sat' ? .45 : .38, interactive:false })));
 }
 /* --- rutas voladas --- */
 function drawHistory(){
