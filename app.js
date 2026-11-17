@@ -554,7 +554,6 @@ function renderChips(){
   $('chips').innerHTML = opts.map(m => `<button class="chip${S.study===m?' on':''}" data-m="${m}">${m<60?m+' min':(m/60)+' h'}</button>`).join('')
     + `<input class="chip-inp" id="studyCustom" type="number" min="5" max="1200" placeholder="min" value="${opts.includes(S.study)?'':S.study}">`;
   $('routeChips').innerHTML = [['real','🛣️ Aerovías reales'],['direct','➖ Línea recta']].map(([v,l]) => `<button class="chip${S.routeMode===v?' on':''}" data-r="${v}">${l}</button>`).join('');
-  $('breakChips').innerHTML = [[0,'Sin descansos'],[25,'25 + 5 min'],[50,'50 + 10 min']].map(([v,l]) => `<button class="chip${S.breaks===v?' on':''}" data-b="${v}">${v?'☕ ':''}${l}</button>`).join('');
 }
 function renderSuggestions(){
   const o=AP[S.origin]; $('suggFrom').textContent = `${o.city} (${o.iata})`;
@@ -588,7 +587,6 @@ function createFlight(){
     runway: route?.dep?.id || '', runwayArr: route?.arr?.id || '',
     meteo: { t:Math.round(baseT + (r()*8-4)), sky:pick(r,SKY), live:false },
     tzO:null, tzD:null,
-    breakEvery:S.breaks, breakLen: S.breaks===25 ? 5 : 10,
     booked:Date.now(), start:null, pausedTotal:0, pausedAt:null, breakUntil:null, nextBreak:null,
     said:{}, nextMsg:0, msgs:[], msgIdx:Math.floor(r()*10),
   };
@@ -888,7 +886,6 @@ function book(){
 function board(){
   if(!flight) return;
   Object.assign(flight, { start:Date.now(), pausedTotal:0, pausedAt:null, breakUntil:null, said:{}, msgs:[], nextMsg:0 });
-  flight.nextBreak = flight.breakEvery ? flight.breakEvery*60000 : null;
   saveFlight(); audio();
   if(noise) setNoise(false,false);
   if(LS.get('vp_noise',true)) setNoise(true);
@@ -930,13 +927,6 @@ function togglePause(){
     say('cap', wasBreak ? 'Fin del descanso. Volvemos a la ruta, Comandante Supremo: concentración máxima.' : 'Salimos del circuito de espera. Reanudamos la ruta, Comandante Supremo.');
   } else { flight.pausedAt=Date.now(); say('cap','Control nos pone en circuito de espera. Tómese un respiro; reanudamos cuando usted diga.'); }
   saveFlight(); tick(true);
-}
-function startBreak(){
-  flight.pausedAt=Date.now(); flight.breakUntil=Date.now()+flight.breakLen*60000;
-  flight.nextBreak += flight.breakEvery*60000;
-  say('fa', `Comandante Supremo, toca descanso: ${flight.breakLen} minutos. Levántese, estire las piernas y beba agua. Le aviso al terminar.`);
-  CABIN_SOUNDS.seatbelt && actx && CABIN_SOUNDS.seatbelt();
-  saveFlight();
 }
 function addLog(status){
   const f=flight, el=elapsedMs(f), p=Math.min(1,el/f.durMs);
@@ -1032,10 +1022,6 @@ function tick(force){
   if(flight.breakUntil && Date.now() >= flight.breakUntil){ resumeFlight(); say('cap','Fin del descanso. Volvemos a la ruta, Comandante Supremo: concentración máxima.'); saveFlight(); }
   const el=elapsedMs(flight), p=Math.min(1, el/flight.durMs), rem=flight.durMs-el;
   if(p>=1){ land(); return; }
-  // descanso programado
-  if(!flight.pausedAt && flight.breakEvery && flight.nextBreak && el >= flight.nextBreak){
-    if(rem > 8*60000) startBreak(); else flight.nextBreak = Infinity;
-  }
   const paused=!!flight.pausedAt, onBreak=!!flight.breakUntil;
   const PH=phasesOf(flight), pi=phaseIdx(p,flight), ph=PH[pi]||PH[PH.length-1], pr=profile(p), heli=acOf(flight).kind==='heli';
   $('hTimer').textContent = onBreak ? fmtClock(flight.breakUntil-Date.now()) : fmtClock(rem);
@@ -1259,7 +1245,6 @@ $('btnRandom').onclick = () => {
 $('chips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.study=+c.dataset.m; savePref(); renderChips(); renderSuggestions(); });
 $('chips').addEventListener('change', e => { if(e.target.id==='studyCustom'){ S.study=Math.max(5,Math.min(1200,+e.target.value||60)); savePref(); renderChips(); renderSuggestions(); } });
 $('routeChips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.routeMode=c.dataset.r; savePref(); planCache=null; renderChips(); renderPlan(); drawRoute(); });
-$('breakChips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.breaks=+c.dataset.b; savePref(); renderChips(); });
 $('sugg').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(!b) return; S.dest=b.dataset.i; ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute(); });
 $('bPause').onclick = togglePause;
 $('bNoise').onclick = () => setNoise(!noise);

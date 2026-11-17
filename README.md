@@ -14,7 +14,7 @@ Temporizador de estudio con simulador de vuelo en jet privado. Sin registros, si
 - **Megafonía de cabina**: avisos de la tripulación durante el vuelo, con el sonido de aviso de cabina.
 - **Ruido de cabina** opcional para concentrarse.
 - **Modo estudio**: dices cuánto quieres estudiar (25 min, 1 h, 3 h…) y te propone destinos que duran eso.
-- **Pausa (circuito de espera)**, **desvío** del vuelo y recuperación automática del vuelo si recargas la página.
+- **Pausa manual (circuito de espera)** cuando tú quieras, cambio de destino en vuelo y recuperación automática del vuelo si recargas la página.
 - **Bitácora y Club Vuelo Privado**: horas, km y destinos acumulados, con niveles Silver → Gold → Platinum → Black → Infinite.
 
 ## Aeródromos de todo el mundo
