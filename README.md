@@ -17,6 +17,14 @@ Temporizador de estudio con simulador de vuelo en jet privado. Sin registros, si
 - **Pausa (circuito de espera)**, **desvío** del vuelo y recuperación automática del vuelo si recargas la página.
 - **Bitácora y Club Vuelo Privado**: horas, km y destinos acumulados, con niveles Silver → Gold → Platinum → Black → Infinite.
 
+## Rutas aéreas reales
+
+- **Pistas reales** de cada aeropuerto (orientación, longitud y extremos) y **radioayudas VOR reales** de todo el mundo, de [OurAirports](https://ourairports.com/data/) (dominio público).
+- La **pista en uso** se elige según el **viento real** en ese momento (Open-Meteo), como en un aeropuerto de verdad.
+- El avión despega por el rumbo de pista, sigue una ruta por VOR sobre tierra y por puntos oceánicos (tipo `45N030W`) sobre el mar, y llega pasando por IAF y FAF alineado con la pista de destino.
+- El plan de vuelo aparece en el planificador y en la tarjeta de embarque. En el HUD se ve el próximo punto de la ruta.
+- Los helicópteros vuelan en VFR directo. Hay una opción para volver a la línea recta.
+
 Atajo: `Espacio` pausa o reanuda el vuelo.
 
 ## Publicación

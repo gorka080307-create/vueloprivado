@@ -105,6 +105,7 @@ let S = {
   ac: ACF[pref.ac] ? pref.ac : 'g700',
   study: pref.study || 60,
   breaks: pref.breaks ?? 50,
+  routeMode: pref.routeMode || 'real',
 };
 let flight = LS.get('vp_active', null);
 let log = LS.get('vp_log', []);
@@ -128,19 +129,48 @@ function wmo(code, isDay){
 async function fetchPlace(a){
   const ctl = new AbortController(); const to = setTimeout(()=>ctl.abort(), 6000);
   try{
-    const u = `https://api.open-meteo.com/v1/forecast?latitude=${a.lat}&longitude=${a.lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m&timezone=auto`;
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${a.lat}&longitude=${a.lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m&timezone=auto`;
     const r = await fetch(u, { signal:ctl.signal }); const j = await r.json();
-    return { off:j.utc_offset_seconds, tz:j.timezone, t:Math.round(j.current.temperature_2m), sky:wmo(j.current.weather_code, j.current.is_day), wind:Math.round(j.current.wind_speed_10m) };
+    const w = { dir:Math.round(j.current.wind_direction_10m), spd:Math.round(j.current.wind_speed_10m), t:Date.now() };
+    if(a.iata) WIND[a.iata] = w;
+    return { off:j.utc_offset_seconds, tz:j.timezone, t:Math.round(j.current.temperature_2m), sky:wmo(j.current.weather_code, j.current.is_day), wind:w.spd, wdir:w.dir };
   }catch(e){ return null; } finally{ clearTimeout(to); }
 }
 async function enrichFlight(f){
   const [o,d] = await Promise.all([fetchPlace(AP[f.from]), fetchPlace(AP[f.to])]);
   if(!flight || flight.id!==f.id) return;
   if(o){ f.tzO=o.off; }
-  if(d){ f.tzD=d.off; f.tzName=d.tz; f.meteo={ t:d.t, sky:d.sky, wind:d.wind, live:true }; }
+  if(d){ f.tzD=d.off; f.tzName=d.tz; f.meteo={ t:d.t, sky:d.sky, wind:d.wind, wdir:d.wdir, live:true }; }
   saveFlight();
   if($('mPass').classList.contains('open') && $('bpCard')) $('bpHolder').innerHTML = passHTML(f);
 }
+
+/* viento para elegir pistas: se pide al elegir origen/destino (caché 20 min) */
+const windPending = new Set();
+async function ensureWind(codes){
+  const need = codes.filter(c => c && AP[c] && RUNWAYS[c]?.rw?.length && !(WIND[c] && Date.now()-WIND[c].t < 20*60000) && !windPending.has(c));
+  if(!need.length) return;
+  need.forEach(c => windPending.add(c));
+  await Promise.all(need.map(c => fetchPlace(AP[c])));
+  need.forEach(c => windPending.delete(c));
+  if(!(flight && flight.start)){ planCache=null; renderPlan(); drawRoute(false); }
+}
+let planCache=null;
+function planRoute(){
+  if(!S.dest || !AP[S.origin] || !AP[S.dest]) return null;
+  const key=[S.origin,S.dest,S.ac,S.routeMode,JSON.stringify(WIND[S.origin]||0),JSON.stringify(WIND[S.dest]||0)].join('|');
+  if(planCache && planCache.key===key) return planCache.r;
+  const r = buildRoute(S.origin, S.dest, ACF[S.ac], S.routeMode);
+  planCache = { key, r }; return r;
+}
+function activeRoute(){
+  if(flight && flight.start){
+    if(!flight._route) flight._route = flight.route ? unpackRoute(flight.route) : buildRoute(flight.from, flight.to, acOf(flight), 'direct');
+    return flight._route;
+  }
+  return planRoute();
+}
+const windTxt = w => w ? (w.spd < 6 ? 'viento en calma' : `viento ${String(w.dir).padStart(3,'0')}° a ${w.spd} km/h`) : '';
 
 /* =================== MAPA =================== */
 let map, airportLayer, routeLayer, historyLayer, nightLayer, planeMarker, flownLine, flownGlow, routeA, routeB;
@@ -259,10 +289,17 @@ function drawHistory(){
   });
 }
 function routeLatLngs(o,d){ let dl=d.lon; const diff=dl-o.lon; if(diff>180) dl-=360; else if(diff<-180) dl+=360; return [L.latLng(o.lat,o.lon), L.latLng(d.lat,dl)]; }
-function posAt(p){ const pa=map.project(routeA,0), pb=map.project(routeB,0); return map.unproject(pa.add(pb.subtract(pa).multiplyBy(p)),0); }
+let routeLL=[], curSeg=-1;
+function posAt(p){
+  const r=activeRoute(); if(!r || routeLL.length<2) return routeA;
+  const { i, f } = routeSegAt(r, p);
+  const pa=map.project(routeLL[i-1],0), pb=map.project(routeLL[i],0);
+  return map.unproject(pa.add(pb.subtract(pa).multiplyBy(f)),0);
+}
 function apIcon(a,tag){ return L.divIcon({ className:'ap-label', iconSize:[0,0], html:`<div class="ap-pin ${isMilAp(a)?'mil':heliOnly(a)?'hp':''}"></div><div class="ap-tag"><small>${tag}</small><b>${a.iata}</b> · ${a.city}</div>` }); }
-function vehicleHTML(kind){
-  const pa=map.project(routeA,0), pb=map.project(routeB,0);
+function vehicleHTML(kind, seg){
+  seg = Math.max(1, Math.min(routeLL.length-1, seg||1));
+  const pa=map.project(routeLL[seg-1],0), pb=map.project(routeLL[seg],0);
   const ang=Math.atan2(pb.y-pa.y,pb.x-pa.x)*180/Math.PI;
   if(kind==='heli'){ // 🚁 mira a la izquierda: se voltea si va hacia el este
     const east = pb.x >= pa.x;
@@ -271,6 +308,24 @@ function vehicleHTML(kind){
   }
   return `<div style="transform:rotate(${ang+45}deg)">✈️</div>`; // ✈️ apunta al noreste
 }
+function wptIcon(p){
+  const cls = p.kind==='vor' ? 'wp-vor' : p.kind==='gc' ? 'wp-gc' : 'wp-fix';
+  const lbl = p.kind==='vor' || p.kind==='gc' ? p.name : p.kind==='faf' ? 'FAF' : p.kind==='star' ? 'IAF' : p.kind==='sid' ? 'SID' : '';
+  return L.divIcon({ className:'wp', iconSize:[0,0], html:`<div class="${cls}"></div>${lbl?`<span>${lbl}</span>`:''}` });
+}
+function drawRunways(code, active){
+  const ends = runwayEnds(code); if(!ends.length) return;
+  const done = new Set();
+  ends.forEach(e => {
+    const k = [e.thr.lat.toFixed(4),e.far.lat.toFixed(4)].sort().join(); if(done.has(k)) return; done.add(k);
+    const isAct = active && (active.id===e.id || ends.find(x=>x.id===active.id && x.thr.lat.toFixed(4)===e.far.lat.toFixed(4)));
+    routeLayer.addLayer(L.polyline([[e.thr.lat,e.thr.lon],[e.far.lat,e.far.lon]], { color: isAct ? '#ffffff' : '#9a9282', weight: isAct ? 6 : 4, opacity: isAct ? .95 : .6, lineCap:'butt', interactive:false }));
+  });
+  if(active){
+    const a = ends.find(x => x.id===active.id);
+    if(a) routeLayer.addLayer(L.marker([a.thr.lat,a.thr.lon], { icon:L.divIcon({ className:'rw-lbl', iconSize:[0,0], html:`<span>${a.id}</span>` }), interactive:false }));
+  }
+}
 function drawRoute(fit=true){
   if(!map) return;
   routeLayer.clearLayers(); planeMarker=null; flownLine=null; flownGlow=null;
@@ -278,15 +333,22 @@ function drawRoute(fit=true){
   drawHistory();
   if(!o) return;
   if(!d){ routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')})); if(fit && mapReady()) { try{ map.flyTo([o.lat,o.lon],5,{duration:.8}); }catch(e){} } return; }
+  const r = activeRoute();
   [routeA, routeB] = routeLatLngs(o,d);
-  routeLayer.addLayer(L.polyline([routeA,routeB], { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
+  routeLL = r ? r.pts.map(q => L.latLng(q.lat, q.lon)) : [routeA, routeB];
+  routeA = routeLL[0]; routeB = routeLL[routeLL.length-1]; curSeg = -1;
+  routeLayer.addLayer(L.polyline(routeLL, { color:'#d4af6a', weight:2.2, opacity:.9, dashArray:'7 9' }));
+  if(r){
+    drawRunways(S.origin, r.dep); drawRunways(S.dest, r.arr);
+    r.pts.forEach(q => { if(['vor','gc','faf','star','sid'].includes(q.kind)) routeLayer.addLayer(L.marker([q.lat,q.lon], { icon:wptIcon(q), interactive:false })); });
+  }
   flownGlow = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:10, opacity:.18, lineCap:'round' });
   flownLine = L.polyline([routeA,routeA], { color:'#f1d9a4', weight:3.5, opacity:1 });
   routeLayer.addLayer(flownGlow); routeLayer.addLayer(flownLine);
-  routeLayer.addLayer(L.marker(routeA,{icon:apIcon(o,'Origen')}));
-  routeLayer.addLayer(L.marker(routeB,{icon:apIcon(d,'Destino')}));
+  routeLayer.addLayer(L.marker([o.lat,o.lon],{icon:apIcon(o,'Origen')}));
+  routeLayer.addLayer(L.marker([d.lat, d.lon + 360*Math.round((routeB.lng - d.lon)/360)],{icon:apIcon(d,'Destino')}));
   const kind = (flight && flight.start ? acOf(flight) : ACF[S.ac]).kind;
-  planeMarker = L.marker(routeA, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:vehicleHTML(kind) }) });
+  planeMarker = L.marker(routeA, { zIndexOffset:1000, icon:L.divIcon({ className:'plane-icon', iconSize:[36,36], iconAnchor:[18,18], html:vehicleHTML(kind,1) }) });
   routeLayer.addLayer(planeMarker);
   if(fit) fitRoute();
 }
@@ -297,12 +359,15 @@ function fitRoute(){
   const pd = flight && flight.start
     ? { paddingTopLeft:[40,small?200:140], paddingBottomRight:[40,small?300:230] }
     : { paddingTopLeft:[small?40:460,110], paddingBottomRight:[60,small?(window.innerHeight*.6):60] };
-  try{ map.fitBounds(L.latLngBounds([routeA,routeB]), { ...pd, maxZoom:9 }); }catch(e){}
+  try{ map.fitBounds(L.latLngBounds(routeLL.length ? routeLL : [routeA,routeB]), { ...pd, maxZoom:10 }); }catch(e){}
 }
 function updatePlane(p){
   if(!map || !planeMarker) return;
-  const pos = posAt(p);
-  planeMarker.setLatLng(pos); flownLine.setLatLngs([routeA,pos]); flownGlow.setLatLngs([routeA,pos]);
+  const pos = posAt(p), r = activeRoute();
+  const seg = r ? routeSegAt(r, p).i : 1;
+  if(seg !== curSeg){ curSeg = seg; const el = planeMarker.getElement(); if(el) el.innerHTML = vehicleHTML((flight && flight.start ? acOf(flight) : ACF[S.ac]).kind, seg); }
+  const flown = routeLL.slice(0, seg).concat([pos]);
+  planeMarker.setLatLng(pos); flownLine.setLatLngs(flown); flownGlow.setLatLngs(flown);
   if(follow && mapReady()) map.panTo(pos, { animate:true, duration:.8 });
 }
 
@@ -365,8 +430,9 @@ function renderPlan(){
     $('summary').innerHTML = `<div class="note" style="margin:0">Elija un destino en el buscador, toque un punto del mapa o pida una sugerencia según su tiempo de estudio.</div>`;
     $('btnBook').disabled = true;
   } else {
-    const dist=distKm(o,d), mins=flightMin(dist,ac), alt=cruiseAlt(dist,ac), stops=stopsFor(dist,ac);
+    const direct=distKm(o,d), r=planRoute(), dist=r?r.dist:direct, mins=flightMin(dist,ac), alt=cruiseAlt(direct,ac), stops=stopsFor(dist,ac);
     const blocks = Math.floor(mins/30);
+    ensureWind([S.origin, S.dest]);
     $('summary').innerHTML = `
       <div class="sum-route">
         <div><div class="sum-iata">${o.iata}</div><div class="sum-city">${flag(o.cc)} ${typeIcon(o)} ${o.city}</div></div>
@@ -379,15 +445,27 @@ function renderPlan(){
         <div class="stat"><div class="k">Crucero</div><div class="v">${ac.kind==='heli'?fmtN(alt)+' ft':'FL'+alt/100}</div></div>
       </div>
       <div class="note">${ac.name} a ${fmtN(ac.speed)} km/h${ac.unit?` · <b>${ac.unit}</b>`:''}.${stops?` <b>${stops} escala${stops>1?'s':''} técnica${stops>1?'s':''}</b> de repostaje incluida${stops>1?'s':''}.`:''} Llegada estimada a las <b>${fmtTime(Date.now()+mins*60000)}</b> si despega ahora${blocks?` · <b>${blocks} bloque${blocks>1?'s':''} de 25+5</b>`:''}.</div>
+      ${r ? routeInfoHTML(r, direct) : ''}
       ${d.note?`<div class="note">${typeIcon(d)} ${d.note}</div>`:''}`;
     $('btnBook').disabled = false;
   }
   renderSuggestions();
 }
+function routeInfoHTML(r, direct){
+  if(r.vfr) return `<div class="rt-box"><div class="rt-row"><span>🚁 Vuelo visual (VFR) directo</span></div></div>`;
+  const wo=r.wind?.o, wd=r.wind?.d;
+  return `<div class="rt-box">
+    <div class="rt-row">${r.dep?`<span class="rw">🛫 Pista <b>${r.dep.id}</b><small>rumbo ${Math.round(r.dep.hdg)}°${wo?' · '+windTxt(wo):''}</small></span>`:`<span class="rw">🛫 Salida directa</span>`}
+    ${r.arr?`<span class="rw">🛬 Pista <b>${r.arr.id}</b><small>rumbo ${Math.round(r.arr.hdg)}°${wd?' · '+windTxt(wd):''}</small></span>`:`<span class="rw">🛬 Llegada directa</span>`}</div>
+    <div class="rt-str" title="${r.str}">${r.strShort}</div>
+    <div class="rt-foot">${S.routeMode==='real'?`Ruta ${fmtN(r.dist)} km (directa ${fmtN(direct)} km) · ${r.pts.filter(p=>p.kind==='vor').length} radioayudas VOR`:'Ruta directa en línea recta'}${(!wo && r.dep) || (!wd && r.arr) ? ' · consultando viento real…' : ''}</div>
+  </div>`;
+}
 function renderChips(){
   const opts=[25,45,60,90,120,180,240];
   $('chips').innerHTML = opts.map(m => `<button class="chip${S.study===m?' on':''}" data-m="${m}">${m<60?m+' min':(m/60)+' h'}</button>`).join('')
     + `<input class="chip-inp" id="studyCustom" type="number" min="5" max="1200" placeholder="min" value="${opts.includes(S.study)?'':S.study}">`;
+  $('routeChips').innerHTML = [['real','🛣️ Aerovías reales'],['direct','➖ Línea recta']].map(([v,l]) => `<button class="chip${S.routeMode===v?' on':''}" data-r="${v}">${l}</button>`).join('');
   $('breakChips').innerHTML = [[0,'Sin descansos'],[25,'25 + 5 min'],[50,'50 + 10 min']].map(([v,l]) => `<button class="chip${S.breaks===v?' on':''}" data-b="${v}">${v?'☕ ':''}${l}</button>`).join('');
 }
 function renderSuggestions(){
@@ -396,7 +474,7 @@ function renderSuggestions(){
   const list = AIRPORTS.filter(a => a.iata!==o.iata).map(a => {
     const ac = feasible(cur,o,a) ? cur : null;
     if(!ac) return null;
-    const dist=distKm(o,a); return { a, dist, mins:flightMin(dist,ac) };
+    const dist=distKm(o,a)*(S.routeMode==='real' && ac.kind!=='heli' ? 1.06 : 1); return { a, dist, mins:flightMin(dist,ac) };
   }).filter(Boolean).sort((x,y) => Math.abs(x.mins-S.study)-Math.abs(y.mins-S.study)).slice(0,6);
   $('sugg').innerHTML = list.length ? list.map(x => `<button class="sugg-item" data-i="${x.a.iata}"><span class="fl">${flag(x.a.cc)}</span><span class="nm">${typeIcon(x.a)} ${x.a.city}<small>${x.a.iata} · ${x.a.name} · ${fmtN(x.dist)} km</small></span><span class="tm">${fmtHM(x.mins)}</span></button>`).join('')
     : `<div class="note">Con el ${cur.short} no hay destinos alcanzables desde aquí. Pruebe otra aeronave.</div>`;
@@ -405,7 +483,7 @@ function renderSuggestions(){
 /* =================== VUELO =================== */
 function createFlight(){
   const o=AP[S.origin], d=AP[S.dest], ac=ACF[S.ac];
-  const dist=distKm(o,d), mins=flightMin(dist,ac);
+  const route=planRoute(), direct=distKm(o,d), dist=route?route.dist:direct, mins=flightMin(dist,ac);
   const r = mulberry32((Date.now() ^ Math.floor(Math.random()*1e9)) >>> 0);
   const L3 = () => Array.from({length:3},()=>String.fromCharCode(65+Math.floor(r()*26))).join('');
   const baseT = 27 - Math.abs(d.lat)*0.38;
@@ -415,10 +493,11 @@ function createFlight(){
     flightNo: (mil?'AME ':'VP ') + (100+Math.floor(r()*9800)),
     callsign: 'SUPREMO ' + pad(1+Math.floor(r()*98)),
     reg: ac.reg ? ac.reg(r) : (ac.kind==='heli' ? 'EC-H' + L3().slice(0,2) : 'EC-' + L3()),
-    from:o.iata, to:d.iata, ac:ac.id, dist, mins, durMs:mins*60000, alt:cruiseAlt(dist,ac), stops:stopsFor(dist,ac),
+    from:o.iata, to:d.iata, ac:ac.id, dist, direct, mins, durMs:mins*60000, alt:cruiseAlt(direct,ac), stops:stopsFor(dist,ac),
+    route: route ? packRoute(route) : null,
     crew: { captain:person(r), fo:person(r), fa:person(r,'F'), rk: mil ? { c:'Cte.', f:'Cap.', a:'Sgto.' } : null },
     catering:pick(r,CATERING), drink:pick(r,DRINKS), gate: mil||isMilAp(o) ? pick(r,GATES_MIL) : o.type==='cp' ? 'Zona de toma libre' : heliOnly(o) ? 'Plataforma del helipuerto' : pick(r,GATES),
-    runway: pad(1+Math.floor(r()*36)) + pick(r,['L','R','C','']),
+    runway: route?.dep?.id || '', runwayArr: route?.arr?.id || '',
     meteo: { t:Math.round(baseT + (r()*8-4)), sky:pick(r,SKY), live:false },
     tzO:null, tzD:null,
     breakEvery:S.breaks, breakLen: S.breaks===25 ? 5 : 10,
@@ -475,6 +554,7 @@ function passHTML(f){
         <div><div class="bp-k">Indicativo</div><div class="bp-v mono">${f.callsign}</div></div>
         <div><div class="bp-k">${heli?'Altitud crucero':'Nivel crucero'}</div><div class="bp-v mono">${altTxt}</div></div>
       </div>
+      ${f.route ? `<div class="bp-plan">${f.route.dep?`<span><i>PISTA SALIDA</i><b>${f.route.dep.id}</b></span>`:''}${f.route.arr?`<span><i>PISTA LLEGADA</i><b>${f.route.arr.id}</b></span>`:''}<span class="pl"><i>${f.route.vfr?'PLAN DE VUELO VFR':'PLAN DE VUELO'}</i><b>${f.route.strShort||f.route.str}</b></span></div>` : ''}
       ${mil?`<div class="bp-unit">🎖️ ${ac.unit} · ${ac.cat}</div>`:''}
       <div class="bp-crew">
         <div><div class="bp-k">Comandante</div><div class="bp-v">${rk.c?rk.c+' ':''}${f.crew.captain}</div></div>
@@ -667,13 +747,24 @@ function announcements(p, el){
   const pi = phaseIdx(p,f);
   const veh = heli ? 'helicóptero' : 'avión';
   if(pi>=0) once('p0', () => say('cap', `Buenas, Comandante Supremo. Le habla ${f.crew.captain}, su comandante. Junto a ${f.crew.fo} y ${f.crew.fa} le damos la bienvenida a bordo de este ${ac.name}${mil?`, del ${ac.unit}`:''}. ${f.flightNo} a ${d.city}: ${fmtHM(f.mins)} de concentración por delante.`));
-  if(pi>=1) once('p1', () => say('fo', heli ? `Rotores en régimen. ${isMilAp(o)?'Control de la base':'Torre'} nos autoriza el despegue. Allá vamos, Comandante Supremo.` : `Torre de ${o.city} nos autoriza a despegar por la pista ${f.runway}. Potencia de despegue… allá vamos.`));
+  if(pi>=1) once('p1', () => say('fo', heli ? `Rotores en régimen. ${isMilAp(o)?'Control de la base':'Torre'} nos autoriza el despegue. Allá vamos, Comandante Supremo.` : (f.runway ? `Torre de ${o.city} nos autoriza a despegar por la pista ${f.runway}${f.route?.wind?.o ? ', ' + windTxt(f.route.wind.o) : ''}. Potencia de despegue… allá vamos.` : `${o.city}: despegue autorizado. Potencia de despegue… allá vamos.`)));
   if(pi>=2) once('p2', () => say('fa', `Comandante Supremo, en cuanto nos estabilicemos le sirvo ${f.drink}. Ponga el móvil en modo avión, que aquí se viene a estudiar.`));
   if(pi>=3) once('p3', () => say('cap', heli ? `Volamos a ${fmtN(f.alt)} pies sobre el terreno. Vuelo tranquilo: momento perfecto para concentrarse.` : `Hemos alcanzado nuestro nivel de crucero, FL${f.alt/100}. Cielo tranquilo: momento perfecto para concentrarse.`));
   if(p>=.5) once('half', () => say('cap', `Hemos superado la mitad del trayecto. Lleva ${fmtHM(el/60000)} de estudio; quedan ${fmtHM((f.durMs-el)/60000)}. Excelente ritmo.`));
   if(f.stops && p>=.45) once('stop', () => say('fo', `Escala técnica de repostaje completada. Seguimos rumbo a ${d.city}.`));
-  if(pi>=4) once('p4', () => say('cap', `Iniciamos el descenso hacia ${d.city}. En destino ${f.meteo.t}°C, ${f.meteo.sky.toLowerCase()}${f.tzD!=null?`, hora local ${fmtTimeTZ(Date.now()+(f.durMs-el),f.tzD)} a la llegada`:''}. Vaya cerrando sus apuntes.`));
-  if(pi>=5) once('p5', () => say('fo', heli ? `Aproximación final a ${d.iata}. ${heliOnly(d)?'Helipuerto a la vista.':'Zona de toma despejada.'}` : `Tren abajo y blocado. Aproximación final a ${d.iata}, pista a la vista.`));
+  if(pi>=4) once('p4', () => say('cap', `Iniciamos el descenso hacia ${d.city}${f.runwayArr?`; control nos asigna la pista ${f.runwayArr}`:''}. En destino ${f.meteo.t}°C, ${f.meteo.sky.toLowerCase()}${f.tzD!=null?`, hora local ${fmtTimeTZ(Date.now()+(f.durMs-el),f.tzD)} a la llegada`:''}. Vaya cerrando sus apuntes.`));
+  if(pi>=5) once('p5', () => say('fo', heli ? `Aproximación final a ${d.iata}. ${heliOnly(d)?'Helipuerto a la vista.':'Zona de toma despejada.'}` : (f.runwayArr ? `Establecidos en la final de la pista ${f.runwayArr} de ${d.city}. Tren abajo y blocado, pista a la vista.` : `Tren abajo y blocado. Aproximación final a ${d.iata}, pista a la vista.`)));
+  // paso por radioayudas
+  const rt = activeRoute();
+  if(rt && !rt.vfr && pi>=2 && pi<=4 && !f.dnd){
+    const seg = routeSegAt(rt, p).i, prev = rt.pts[seg-1];
+    if(prev && (prev.kind==='vor' || prev.kind==='gc') && f.lastWpt !== seg-1 && el - (f.lastWptMsg||0) > 180000){
+      f.lastWpt = seg-1; f.lastWptMsg = el;
+      const nx = nextWaypoint(rt, p);
+      const what = prev.kind==='vor' ? `el ${prev.label.split(' ')[0]} de ${prev.label.split(' ').slice(1).join(' ')} (${prev.name})` : `el punto ${prev.name}`;
+      say('fo', `Sobrevolando ${what}.${nx && nx.pt.name ? ` Próximo punto: ${nx.pt.kind==='faf'||nx.pt.kind==='star'?'inicio de la aproximación':nx.pt.name}, a ${fmtN(nx.km)} km.` : ''}`, false);
+    }
+  }
   const every = Math.min(25, Math.max(8, f.mins/6)) * 60000;
   if(pi===3){
     if(!f.nextMsg) f.nextMsg = el + every;
@@ -761,7 +852,7 @@ function startBreak(){
 }
 function addLog(status){
   const f=flight, el=elapsedMs(f), p=Math.min(1,el/f.durMs);
-  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*p), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:{...f, msgs:[], said:{}} };
+  const entry = { id:f.id, flightNo:f.flightNo, from:f.from, to:f.to, ac:f.ac, km:Math.round(f.dist*p), dist:f.dist, mins:f.mins, studyMin:Math.round(el/60000*10)/10, date:f.start, status, f:{...f, _route:undefined, msgs:[], said:{}} };
   log.unshift(entry); saveLog(); updateTier();
   return entry;
 }
@@ -854,7 +945,8 @@ function tick(force){
   $('hAlt').textContent = paused && p>.1 && p<.9 ? 'Holding' : fmtN(pr.alt)+' ft';
   $('hSpd').textContent = fmtN(pr.spd)+' km/h';
   $('hKm').textContent = fmtN(flight.dist*(1-p))+' km';
-  $('hPct').textContent = (p*100).toFixed(1)+'%';
+  const rtH = activeRoute(), nx = rtH && !rtH.vfr ? nextWaypoint(rtH, p) : null;
+  $('hPct').textContent = nx ? `${nx.pt.kind==='rwy' ? 'RWY '+nx.pt.name.split(' ').pop() : nx.pt.kind==='faf' ? 'FAF' : nx.pt.kind==='star' ? 'IAF' : nx.pt.kind==='sid' ? 'SID' : nx.pt.name} · ${fmtN(nx.km)} km` : (p*100).toFixed(1)+'%';
   const eta = Date.now()+rem;
   $('hEta').textContent = fmtTimeTZ(eta, flight.tzD) + (flight.tzD!=null?'*':'');
   $('hEta').title = flight.tzD!=null ? `Hora local en destino (${fmtUTC(flight.tzD)})` : '';
@@ -958,6 +1050,7 @@ $('btnRandom').onclick = () => {
 };
 $('chips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.study=+c.dataset.m; savePref(); renderChips(); renderSuggestions(); });
 $('chips').addEventListener('change', e => { if(e.target.id==='studyCustom'){ S.study=Math.max(5,Math.min(1200,+e.target.value||60)); savePref(); renderChips(); renderSuggestions(); } });
+$('routeChips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.routeMode=c.dataset.r; savePref(); planCache=null; renderChips(); renderPlan(); drawRoute(); });
 $('breakChips').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; S.breaks=+c.dataset.b; savePref(); renderChips(); });
 $('sugg').addEventListener('click', e => { const b=e.target.closest('.sugg-item'); if(!b) return; S.dest=b.dataset.i; ensureAircraft(); savePref(); syncInputs(); renderPlan(); drawRoute(); });
 $('bPause').onclick = togglePause;
@@ -1001,3 +1094,4 @@ if(flight && flight.start){
   if(flight && !flight.start){ flight=null; saveFlight(); }
   ensureAircraft(); renderPlan(); drawRoute();
 }
+ensureWind([S.origin, S.dest]);

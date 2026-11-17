@@ -268,6 +268,29 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
 .hbtn{white-space:nowrap}
 @media (max-width:820px){.hud-btns{flex-wrap:wrap}}
 
+
+/* rutas reales */
+.rt-box{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.rt-row{display:flex;gap:8px}
+.rt-row .rw{flex:1;background:rgba(0,0,0,.25);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--muted)}
+.rt-row .rw b{color:var(--gold2);font-family:var(--mono);font-size:15px;margin-left:2px}
+.rt-row .rw small{display:block;font-size:10.5px;margin-top:2px}
+.rt-str{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--text);background:rgba(0,0,0,.3);border-radius:8px;padding:8px 10px;line-height:1.6;word-break:break-word}
+.rt-foot{font-size:11px;color:var(--muted);margin-top:6px}
+.wp{position:relative}
+.wp .wp-vor{position:absolute;left:-6px;top:-6px;width:12px;height:12px;background:#0b0d12;border:2px solid #7fc8ff;clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+.wp .wp-vor{border:none;background:#7fc8ff}
+.wp .wp-gc{position:absolute;left:-4px;top:-4px;width:8px;height:8px;transform:rotate(45deg);background:#c9b8ff}
+.wp .wp-fix{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#f1d9a4}
+.wp span{position:absolute;left:9px;top:-8px;font-family:var(--mono);font-size:10px;font-weight:600;color:#cfe8ff;background:rgba(8,10,14,.75);padding:1px 4px;border-radius:4px;white-space:nowrap}
+.rw-lbl span{position:absolute;transform:translate(-50%,-150%);font-family:var(--mono);font-size:11px;font-weight:700;color:#0b0d12;background:#fff;padding:1px 5px;border-radius:4px;white-space:nowrap}
+.bp-plan{display:flex;gap:10px;align-items:stretch;padding:10px 0 12px;border-top:1px solid #e3d8c0}
+.bp-plan span{display:flex;flex-direction:column;background:#efe6d2;border-radius:9px;padding:6px 10px}
+.bp-plan i{font-style:normal;font-size:8.5px;letter-spacing:.2em;color:#8a7f69;font-weight:800}
+.bp-plan b{font-family:var(--mono);font-size:16px;font-weight:600;color:#1d1a14}
+.bp-plan .pl{flex:1;min-width:0}
+.bp-plan .pl b{font-size:10.5px;line-height:1.5;word-break:break-word;font-weight:500}
+@media (max-width:820px){ .bp-plan{flex-wrap:wrap} .bp-plan .pl{flex-basis:100%} }
 @media (max-width:420px){ #tierName{display:none} }
 @media (max-width:820px){
   .topbar{padding:10px 14px}
@@ -342,6 +365,7 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
     <select class="inp" id="selAc"></select>
   </div>
 
+  <div class="chips" id="routeChips" style="margin-top:4px"></div>
   <div class="summary" id="summary"></div>
 
   <button class="btn btn-gold btn-block" id="btnBook" style="margin-top:12px">🎫 Emitir tarjeta de embarque</button>
@@ -383,7 +407,7 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
       <div><div class="k">Altitud</div><div class="v" id="hAlt">0 ft</div></div>
       <div><div class="k">Velocidad</div><div class="v" id="hSpd">0 km/h</div></div>
       <div><div class="k">Restante</div><div class="v" id="hKm">0 km</div></div>
-      <div><div class="k">Recorrido</div><div class="v" id="hPct">0%</div></div>
+      <div><div class="k">Próximo punto</div><div class="v" id="hPct">—</div></div>
       <div><div class="k">Llegada</div><div class="v" id="hEta">--:--</div></div>
     </div>
   </div>
@@ -452,6 +476,9 @@ select.inp optgroup{background:#0f1218;color:var(--gold);font-style:normal;font-
 <div class="toast" id="toast"></div>
 
 <script src="data.js"></script>
+<script src="runways.js"></script>
+<script src="navaids.js"></script>
+<script src="routes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
